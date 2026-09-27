@@ -1,5 +1,7 @@
 import {
   "moonbit-community/proton/internal/native/ffi" @native_ffi,
+  "moonbit-community/proton/internal/native/presentation",
+  "moonbit-community/proton/internal/native/presentation/cef" @cef_presentation,
   "moonbit-community/proton_ffi" @ffi,
   "moonbit-community/proton/internal/locale",
   "moonbitlang/core/json",

@@ -1422,17 +1422,29 @@ priv enum WindowLifecycleState {
 
 ///|
 struct Runtime {
-  mut handle : @native_ffi.RuntimeHandle
+  platform : PlatformRuntime
+  presentation : @presentation.Runtime
   mut lifecycle : RuntimeLifecycleState
+}
+
+///|
+priv struct PlatformRuntime {
+  mut handle : @native_ffi.RuntimeHandle
 }
 
 ///|
 struct Window {
   runtime : Runtime
-  mut handle : @native_ffi.WindowHandle
+  platform : PlatformWindow
+  presentation : @presentation.Surface
   id : Int64
   mut lifecycle : WindowLifecycleState
   mut close_interception_enabled : Bool
+}
+
+///|
+priv struct PlatformWindow {
+  mut handle : @native_ffi.WindowHandle
 }
 
 ///|

@@ -6,6 +6,24 @@ boundary. Applications use the root `moonbit-community/proton` facade instead.
 The private ownership layer uses Proton-owned `Runtime` and `Window` values.
 The root facade does not expose these values or raw native handles.
 
+## Platform and presentation ownership
+
+The private runtime has two distinct lifetime owners. `PlatformRuntime` and
+`PlatformWindow` retain the opaque handles used for host-loop and operating
+system operations. The `presentation` package defines the process, runtime,
+and window-surface boundary, while `presentation/cef` supplies the sole
+default driver.
+
+The C ABI still uses shared runtime and window handles, and the native build
+still links CEF unconditionally. Those constraints preserve existing behavior
+for this first ownership split; they do not make CEF part of the platform
+contract. A presentation owns subprocess dispatch, presentation runtime
+startup and teardown, and content-surface attachment and destruction.
+
+Platform services must not initialize CEF directly. New browser or renderer
+startup work belongs in the CEF presentation implementation; host-loop,
+application, and operating-system work remains in the platform path.
+
 ```mbt check
 ///|
 test "native boundary is linked" {

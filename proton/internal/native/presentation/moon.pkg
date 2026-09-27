@@ -1,0 +1,10 @@
+import {
+  "moonbit-community/proton/internal/native/ffi" @native_ffi,
+}
+
+supported_targets = "native"
+
+options(
+  "is-main": false,
+  targets: { "presentation.mbt": [ "native" ] },
+)

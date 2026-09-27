@@ -1,0 +1,13 @@
+import {
+  "moonbit-community/proton/internal/native/cef_loader",
+  "moonbit-community/proton/internal/native/ffi" @native_ffi,
+  "moonbit-community/proton/internal/native/ffi_mac" @mac_engine,
+  "moonbit-community/proton/internal/native/presentation" @presentation,
+}
+
+supported_targets = "native"
+
+options(
+  "is-main": false,
+  targets: { "cef.mbt": [ "native" ] },
+)

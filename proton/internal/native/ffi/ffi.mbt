@@ -1,10 +1,4 @@
 ///|
-pub fn ensure_cef_loader_linked() -> Unit {
-  @mac_engine.ensure_linked()
-  @cef_loader.ensure_linked()
-}
-
-///|
 #external
 pub type RuntimeHandle
 

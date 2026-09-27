@@ -505,24 +505,10 @@ fn validate_runtime_config(config : RuntimeConfig) -> Unit raise NativeError {
 pub fn execute_process(
   config? : RuntimeConfig = RuntimeConfig::bundled(),
 ) -> ProcessResult raise NativeError {
-  @native_ffi.ensure_cef_loader_linked()
   validate_runtime_config(config)
   let out_exit_code = Ref(0)
-  let status = @native_ffi.execute_process(
-    runtime_config_bool(config.use_bundled),
-    runtime_config_string(config.runtime_root),
-    runtime_config_string(config.helper_path),
-    runtime_config_string(config.resources_dir),
-    runtime_config_string(config.locales_dir),
-    runtime_config_string(config.cache_dir),
-    runtime_config_string(config.locale),
-    runtime_config_languages(config.accept_languages),
-    runtime_config_string(config.framework_dialog_ok_label),
-    runtime_config_string(config.framework_dialog_cancel_label),
-    runtime_config_remote_debugging(config.remote_debugging),
-    runtime_config_bool(config.headless),
-    runtime_config_bool(config.persist_session_cookies),
-    out_exit_code,
+  let status = @cef_presentation.driver().execute_process(
+    runtime_presentation_config(config, None, None), out_exit_code,
   )
   if status < 0 {
     raise native_error(status)
@@ -549,33 +535,50 @@ fn RuntimeConfig::resolve_proxy(self : RuntimeConfig) -> (String?, String?) {
 pub fn Runtime::Runtime(
   config? : RuntimeConfig = RuntimeConfig::bundled(),
 ) -> Runtime raise NativeError {
-  @native_ffi.ensure_cef_loader_linked()
   validate_runtime_config(config)
   let (proxy_server, proxy_bypass) = config.resolve_proxy()
-  let out_runtime = Ref(@native_ffi.runtime_null())
-  let status = @native_ffi.runtime_create(
-    runtime_config_bool(config.use_bundled),
-    runtime_config_string(config.runtime_root),
-    runtime_config_string(config.helper_path),
-    runtime_config_string(config.resources_dir),
-    runtime_config_string(config.locales_dir),
-    runtime_config_string(config.cache_dir),
-    runtime_config_string(config.locale),
-    runtime_config_languages(config.accept_languages),
-    runtime_config_string(proxy_server),
-    runtime_config_string(proxy_bypass),
-    runtime_config_string(config.framework_dialog_ok_label),
-    runtime_config_string(config.framework_dialog_cancel_label),
-    runtime_config_remote_debugging(config.remote_debugging),
-    runtime_config_bool(config.headless),
-    runtime_config_accessibility(config.accessibility_mode),
-    runtime_config_bool(config.persist_session_cookies),
-    out_runtime,
+  let status = Ref(0)
+  let presentation = @cef_presentation.driver().create(
+    runtime_presentation_config(config, proxy_server, proxy_bypass), status,
   )
-  if status < 0 {
-    raise native_error(status)
+  if status.val < 0 {
+    raise native_error(status.val)
   } else {
-    Runtime::{ handle: out_runtime.val, lifecycle: RuntimeActive, }
+    Runtime::{
+      platform: PlatformRuntime::{ handle: presentation.handle, },
+      presentation,
+      lifecycle: RuntimeActive,
+    }
+  }
+}
+
+///|
+fn runtime_presentation_config(
+  config : RuntimeConfig,
+  proxy_server : String?,
+  proxy_bypass : String?,
+) -> @presentation.RuntimeConfig {
+  {
+    use_bundled: runtime_config_bool(config.use_bundled),
+    runtime_root: runtime_config_string(config.runtime_root),
+    helper_path: runtime_config_string(config.helper_path),
+    resources_dir: runtime_config_string(config.resources_dir),
+    locales_dir: runtime_config_string(config.locales_dir),
+    cache_dir: runtime_config_string(config.cache_dir),
+    locale: runtime_config_string(config.locale),
+    accept_languages: runtime_config_languages(config.accept_languages),
+    proxy_server: runtime_config_string(proxy_server),
+    proxy_bypass: runtime_config_string(proxy_bypass),
+    dialog_ok_label: runtime_config_string(config.framework_dialog_ok_label),
+    dialog_cancel_label: runtime_config_string(
+      config.framework_dialog_cancel_label,
+    ),
+    remote_debugging_port: runtime_config_remote_debugging(
+      config.remote_debugging,
+    ),
+    headless: runtime_config_bool(config.headless),
+    accessibility_mode: runtime_config_accessibility(config.accessibility_mode),
+    persist_session_cookies: runtime_config_bool(config.persist_session_cookies),
   }
 }
 
@@ -585,7 +588,7 @@ pub fn Runtime::begin_destroy(self : Runtime) -> Unit raise NativeError {
     RuntimeDestroyed => return
     RuntimeActive | RuntimeDestroying => self.lifecycle = RuntimeDestroying
   }
-  check_status(@native_ffi.proton_runtime_begin_destroy_ffi(self.handle))
+  check_status(self.presentation.begin_destroy())
 }
 
 ///|
@@ -600,7 +603,7 @@ pub fn Runtime::destroy_ready(self : Runtime) -> Bool raise NativeError {
     RuntimeDestroyed => return true
   }
   let ready = Ref(0)
-  check_status(@native_ffi.proton_runtime_destroy_ready_ffi(self.handle, ready))
+  check_status(self.presentation.destroy_ready(ready))
   ready.val != 0
 }
 
@@ -615,8 +618,8 @@ pub fn Runtime::finish_destroy(self : Runtime) -> Unit raise NativeError {
         message="runtime destroy has not begun",
       )
   }
-  check_status(@native_ffi.proton_runtime_finish_destroy_ffi(self.handle))
-  self.handle = @native_ffi.runtime_null()
+  check_status(self.presentation.finish_destroy())
+  self.platform.handle = @native_ffi.runtime_null()
   self.lifecycle = RuntimeDestroyed
 }
 
@@ -625,7 +628,7 @@ fn Runtime::active_handle(
   self : Runtime,
 ) -> @native_ffi.RuntimeHandle raise NativeError {
   match self.lifecycle {
-    RuntimeActive => self.handle
+    RuntimeActive => self.platform.handle
     RuntimeDestroying | RuntimeDestroyed =>
       raise Status(
         status=proton_err_invalid_state,
@@ -1519,46 +1522,61 @@ pub fn Window::Window(
   config? : WindowConfig = WindowConfig(),
 ) -> Window raise NativeError {
   validate_window_config(config)
-  let out_window = Ref(@native_ffi.window_null())
   let bridge_config = build_bridge_config(config.bridge)
   let web_request_config = build_web_request_config(
     config.web_request_cancel_prefixes,
     config.web_request_redirect_prefixes,
     config.web_request_header_prefixes,
   )
-  let status = @native_ffi.window_create(
-    runtime.active_handle(),
-    @ffi.to_cstr(config.title),
-    config.width,
-    config.height,
-    @ffi.to_cstr(config.initial_url),
-    window_size_hint_code(config.size_hint),
-    runtime_config_bool(config.titlebar_style is TitlebarStyle::Overlay),
-    config.theme_preference.native_value(),
-    runtime_config_bool(config.traffic_light_position is Some(_)),
-    config.traffic_light_position.map(p => p.0).unwrap_or(0),
-    config.traffic_light_position.map(p => p.1).unwrap_or(0),
-    browser_policy_code(config.browser.navigation),
-    runtime_config_string(config.framework_titlebar_minimize_label),
-    runtime_config_string(config.framework_titlebar_maximize_label),
-    runtime_config_string(config.framework_titlebar_restore_label),
-    runtime_config_string(config.framework_titlebar_close_label),
-    browser_policy_code(config.browser.new_window),
-    browser_policy_code(config.browser.download),
-    browser_policy_code(config.browser.certificate),
-    browser_policy_code(config.browser.media),
-    runtime_config_bool(config.browser.devtools),
-    bridge_config,
-    web_request_config,
-    out_window,
+  ignore(runtime.active_handle())
+  let status = Ref(0)
+  let presentation = runtime.presentation.create_surface(
+    {
+      title: @ffi.to_cstr(config.title),
+      width: config.width,
+      height: config.height,
+      initial_url: @ffi.to_cstr(config.initial_url),
+      size_hint: window_size_hint_code(config.size_hint),
+      titlebar_overlay: runtime_config_bool(
+        config.titlebar_style is TitlebarStyle::Overlay,
+      ),
+      theme_preference: config.theme_preference.native_value(),
+      button_position_custom: runtime_config_bool(
+        config.traffic_light_position is Some(_),
+      ),
+      button_position_x: config.traffic_light_position.map(p => p.0).unwrap_or(0),
+      button_position_y: config.traffic_light_position.map(p => p.1).unwrap_or(0),
+      navigation_policy: browser_policy_code(config.browser.navigation),
+      titlebar_minimize_label: runtime_config_string(
+        config.framework_titlebar_minimize_label,
+      ),
+      titlebar_maximize_label: runtime_config_string(
+        config.framework_titlebar_maximize_label,
+      ),
+      titlebar_restore_label: runtime_config_string(
+        config.framework_titlebar_restore_label,
+      ),
+      titlebar_close_label: runtime_config_string(
+        config.framework_titlebar_close_label,
+      ),
+      new_window_policy: browser_policy_code(config.browser.new_window),
+      download_policy: browser_policy_code(config.browser.download),
+      certificate_policy: browser_policy_code(config.browser.certificate),
+      media_policy: browser_policy_code(config.browser.media),
+      devtools: runtime_config_bool(config.browser.devtools),
+      bridge_config,
+      web_request_config,
+    },
+    status,
   )
-  if status < 0 {
-    raise native_error(status)
+  if status.val < 0 {
+    raise native_error(status.val)
   } else {
     Window::{
       runtime,
-      handle: out_window.val,
-      id: @native_ffi.window_logical_id(out_window.val),
+      platform: PlatformWindow::{ handle: presentation.handle, },
+      presentation,
+      id: @native_ffi.window_logical_id(presentation.handle),
       lifecycle: WindowLive,
       close_interception_enabled: false,
     }
@@ -1568,7 +1586,7 @@ pub fn Window::Window(
 ///|
 pub fn Window::destroy(self : Window) -> Unit raise NativeError {
   if !(self.runtime.lifecycle is RuntimeActive) {
-    self.handle = @native_ffi.window_null()
+    self.platform.handle = @native_ffi.window_null()
     self.lifecycle = WindowDestroyed
     return
   }
@@ -1577,11 +1595,11 @@ pub fn Window::destroy(self : Window) -> Unit raise NativeError {
     WindowLive | WindowCloseRequested | WindowDestroying =>
       self.lifecycle = WindowDestroying
   }
-  let status = @native_ffi.proton_window_destroy_ffi(self.handle)
+  let status = self.presentation.destroy()
   if status < 0 {
     raise native_error(status)
   } else {
-    self.handle = @native_ffi.window_null()
+    self.platform.handle = @native_ffi.window_null()
     self.lifecycle = WindowDestroyed
   }
 }
@@ -1592,7 +1610,7 @@ fn Window::live_handle(
 ) -> @native_ffi.WindowHandle raise NativeError {
   ignore(self.runtime.active_handle())
   match self.lifecycle {
-    WindowLive => self.handle
+    WindowLive => self.platform.handle
     WindowCloseRequested | WindowDestroying | WindowDestroyed =>
       raise Status(
         status=proton_err_invalid_state,

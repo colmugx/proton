@@ -17,8 +17,6 @@ pub fn bridge_config_create(@ref.Ref[Int]) -> BridgeConfigHandle
 
 pub fn bridge_config_empty() -> BridgeConfigHandle
 
-pub fn ensure_cef_loader_linked() -> Unit
-
 pub fn event_cookie_count(EventHandle, @ref.Ref[Int]) -> Int
 
 pub fn event_cookie_int64_field(EventHandle, Int, Int, @ref.Ref[Int64], @ref.Ref[Int]) -> Int

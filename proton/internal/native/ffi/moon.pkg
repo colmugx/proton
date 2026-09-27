@@ -1,6 +1,4 @@
 import {
-  "moonbit-community/proton/internal/native/cef_loader",
-  "moonbit-community/proton/internal/native/ffi_mac" @mac_engine,
   "moonbit-community/proton_ffi",
 }
 

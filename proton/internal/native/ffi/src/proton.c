@@ -817,6 +817,15 @@ int32_t proton_internal_platform_window_create(
     *out_window = PROTON_INVALID_HANDLE;
     return proton_set_error(status, "invalid platform window configuration");
   }
+  char engine_error[512] = {0};
+  status = proton_platform_window_materialize(
+      slot->platform_window, runtime_slot->presentation_runtime, logical_id,
+      engine_error, sizeof(engine_error));
+  if (status != PROTON_OK) {
+    proton_window_slot_destroy(*out_window);
+    *out_window = PROTON_INVALID_HANDLE;
+    return proton_set_engine_status(status, engine_error);
+  }
   return PROTON_OK;
 }
 
@@ -855,12 +864,19 @@ int32_t proton_internal_cef_surface_attach(
   config.button_position_y = native_window->button_position_y;
   int64_t logical_id = platform_window->logical_id;
   config.public_window = logical_id;
-  proton_engine_window_t *engine_window = NULL;
+  proton_engine_window_t *engine_window =
+      proton_platform_window_backend(platform_window->platform_window);
   if (runtime_slot->presentation_runtime != NULL) {
     char engine_error[512] = {0};
-    status = proton_engine_window_create(
-        runtime_slot->presentation_runtime, &config, &engine_window,
-        engine_error, sizeof(engine_error));
+    if (engine_window != NULL) {
+      status = proton_engine_window_attach_presentation(
+          engine_window, runtime_slot->presentation_runtime, &config,
+          engine_error, sizeof(engine_error));
+    } else {
+      status = proton_engine_window_create(
+          runtime_slot->presentation_runtime, &config, &engine_window,
+          engine_error, sizeof(engine_error));
+    }
     if (status != PROTON_OK) {
       return proton_set_engine_status(status, engine_error);
     }

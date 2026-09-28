@@ -85,6 +85,19 @@ int32_t proton_platform_window_materialize(
                                      error, error_len);
 }
 
+int32_t proton_platform_window_destroy_shell(
+    proton_platform_window_t *window, char *error, size_t error_len) {
+  if (window == NULL || window->backend == NULL) {
+    return PROTON_OK;
+  }
+  int32_t status =
+      proton_engine_window_destroy(window->backend, error, error_len);
+  if (status == PROTON_OK) {
+    window->backend = NULL;
+  }
+  return status;
+}
+
 void proton_platform_window_free(proton_platform_window_t *window) {
   free(window);
 }

@@ -269,6 +269,8 @@ int32_t proton_engine_window_popup_menu(proton_engine_window_t *window,
 int32_t proton_engine_window_focus(proton_engine_window_t *window,
                                    char *error,
                                    size_t error_len);
+int32_t proton_engine_window_focus_presentation(
+    proton_engine_window_t *window, char *error, size_t error_len);
 int32_t proton_engine_window_set_title(proton_engine_window_t *window,
                                        const char *title,
                                        char *error,

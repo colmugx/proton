@@ -27,21 +27,8 @@ pub(all) struct RuntimeConfig {
 
 ///|
 pub(all) struct SurfaceConfig {
-  title : Bytes
-  width : Int
-  height : Int
   initial_url : Bytes
-  size_hint : Int
-  titlebar_overlay : Int
-  theme_preference : Int
-  button_position_custom : Int
-  button_position_x : Int
-  button_position_y : Int
   navigation_policy : Int
-  titlebar_minimize_label : Bytes
-  titlebar_maximize_label : Bytes
-  titlebar_restore_label : Bytes
-  titlebar_close_label : Bytes
   new_window_policy : Int
   download_policy : Int
   certificate_policy : Int
@@ -123,21 +110,8 @@ pub fn attach_surface(
 ) -> @presentation.Surface {
   out_status.val = @native_ffi.cef_surface_attach(
     platform,
-    config.title,
-    config.width,
-    config.height,
     config.initial_url,
-    config.size_hint,
-    config.titlebar_overlay,
-    config.theme_preference,
-    config.button_position_custom,
-    config.button_position_x,
-    config.button_position_y,
     config.navigation_policy,
-    config.titlebar_minimize_label,
-    config.titlebar_maximize_label,
-    config.titlebar_restore_label,
-    config.titlebar_close_label,
     config.new_window_policy,
     config.download_policy,
     config.certificate_policy,

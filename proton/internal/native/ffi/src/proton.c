@@ -1089,6 +1089,15 @@ int32_t proton_window_focus(proton_window_handle_t window) {
       return proton_set_engine_status(status, engine_error);
     }
   }
+  if (slot->presentation_surface != NULL) {
+    char presentation_error[512] = {0};
+    status = proton_engine_window_focus_presentation(
+        slot->presentation_surface, presentation_error,
+        sizeof(presentation_error));
+    if (status != PROTON_OK) {
+      return proton_set_engine_status(status, presentation_error);
+    }
+  }
   g_last_error[0] = '\0';
   return PROTON_OK;
 }

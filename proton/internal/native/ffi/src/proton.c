@@ -858,6 +858,7 @@ int32_t proton_internal_cef_surface_attach(
   config.button_position_custom = native_window->button_position_custom;
   config.button_position_x = native_window->button_position_x;
   config.button_position_y = native_window->button_position_y;
+  config.platform_window = native_window;
   int64_t logical_id = platform_window->logical_id;
   config.public_window = logical_id;
   proton_engine_window_t *engine_window =

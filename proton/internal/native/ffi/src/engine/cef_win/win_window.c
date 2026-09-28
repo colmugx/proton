@@ -842,6 +842,7 @@ int32_t proton_engine_window_create(
       proton_browser_lifecycle_creation_failed(window->browser_lifecycle);
       proton_engine_bridge_host_destroy(window->bridge);
       proton_browser_session_destroy(window->browser_session);
+      proton_platform_window_backend_finalized(window->platform, window);
       free(window);
       proton_engine_set_message(error, error_len,
                                 "failed to allocate browser state");
@@ -858,6 +859,7 @@ int32_t proton_engine_window_create(
       proton_browser_lifecycle_clear_owner(window->browser_lifecycle);
       proton_browser_session_destroy(window->browser_session);
       proton_engine_bridge_host_destroy(window->bridge);
+      proton_platform_window_backend_finalized(window->platform, window);
       free(window);
       proton_engine_set_message(error, error_len, "failed to allocate client");
       return PROTON_ERR_ENGINE;
@@ -878,16 +880,18 @@ int32_t proton_engine_window_create(
     if (window->titlebar_overlay) {
       window_style |= WS_CLIPCHILDREN;
     }
-    proton_engine_window_hwnd(window) = CreateWindowExW(
+    HWND native_window = CreateWindowExW(
         0, PROTON_ENGINE_WINDOW_CLASS, wide_title, window_style, CW_USEDEFAULT,
         CW_USEDEFAULT, config.width, config.height, NULL, NULL,
         GetModuleHandleW(NULL),
         window->platform != NULL ? window->platform : NULL);
+    proton_engine_window_set_hwnd(window, native_window);
     if (proton_engine_window_hwnd(window) == NULL) {
       proton_browser_lifecycle_creation_failed(window->browser_lifecycle);
       proton_browser_lifecycle_clear_owner(window->browser_lifecycle);
       proton_browser_session_destroy(window->browser_session);
       proton_engine_bridge_host_destroy(window->bridge);
+      proton_platform_window_backend_finalized(window->platform, window);
       free(window);
       proton_engine_set_message(error, error_len, "window creation failed");
       return PROTON_ERR_PLATFORM;
@@ -903,6 +907,7 @@ int32_t proton_engine_window_create(
       proton_browser_lifecycle_clear_owner(window->browser_lifecycle);
       proton_browser_session_destroy(window->browser_session);
       proton_engine_bridge_host_destroy(window->bridge);
+      proton_platform_window_backend_finalized(window->platform, window);
       free(window);
       proton_engine_set_message(error, error_len,
                                 "failed to initialize window geometry");
@@ -926,7 +931,8 @@ int32_t proton_engine_window_create(
         proton_browser_lifecycle_clear_owner(window->browser_lifecycle);
         proton_browser_session_destroy(window->browser_session);
         proton_engine_bridge_host_destroy(window->bridge);
-        free(window);
+        proton_platform_window_backend_finalized(window->platform, window);
+      free(window);
         return menu_status;
       }
     }
@@ -945,6 +951,7 @@ int32_t proton_engine_window_create(
       proton_engine_bridge_host_destroy(window->bridge);
       proton_browser_session_destroy(window->browser_session);
       free(window->draggable_regions);
+      proton_platform_window_backend_finalized(window->platform, window);
       free(window);
       return status;
     }

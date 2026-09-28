@@ -67,34 +67,6 @@ struct proton_engine_runtime {
   proton_browser_registry_t *browsers;
 };
 
-static inline GtkWidget *proton_engine_window_native_widget(
-    const proton_engine_window_t *window) {
-  return window != NULL && window->platform != NULL
-             ? (GtkWidget *)window->platform->native_window
-             : NULL;
-}
-
-static inline void proton_engine_window_set_native_widget(
-    proton_engine_window_t *window, GtkWidget *widget) {
-  if (window != NULL && window->platform != NULL) {
-    window->platform->native_window = (void *)widget;
-  }
-}
-
-static inline GtkWidget *proton_engine_window_content_host(
-    const proton_engine_window_t *window) {
-  return window != NULL && window->platform != NULL
-             ? (GtkWidget *)window->platform->content_host
-             : NULL;
-}
-
-static inline void proton_engine_window_set_content_host(
-    proton_engine_window_t *window, GtkWidget *host) {
-  if (window != NULL && window->platform != NULL) {
-    window->platform->content_host = (void *)host;
-  }
-}
-
 struct proton_engine_window {
   proton_platform_window_t *platform;
   proton_engine_runtime_t *runtime;
@@ -151,6 +123,35 @@ struct proton_engine_window {
   struct proton_engine_view *views;
   struct proton_engine_window *next;
 };
+
+static inline GtkWidget *proton_engine_window_native_widget(
+    const proton_engine_window_t *window) {
+  return window != NULL && window->platform != NULL
+             ? (GtkWidget *)window->platform->native_window
+             : NULL;
+}
+
+static inline void proton_engine_window_set_native_widget(
+    proton_engine_window_t *window, GtkWidget *widget) {
+  if (window != NULL && window->platform != NULL) {
+    window->platform->native_window = (void *)widget;
+  }
+}
+
+static inline GtkWidget *proton_engine_window_content_host(
+    const proton_engine_window_t *window) {
+  return window != NULL && window->platform != NULL
+             ? (GtkWidget *)window->platform->content_host
+             : NULL;
+}
+
+static inline void proton_engine_window_set_content_host(
+    proton_engine_window_t *window, GtkWidget *host) {
+  if (window != NULL && window->platform != NULL) {
+    window->platform->content_host = (void *)host;
+  }
+}
+
 
 void proton_engine_dialog_cancel_runtime(proton_engine_runtime_t *runtime);
 void proton_engine_dialog_cancel_window(proton_engine_window_t *window);

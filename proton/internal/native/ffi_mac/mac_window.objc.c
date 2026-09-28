@@ -1059,6 +1059,7 @@ int32_t proton_engine_window_create(
         proton_browser_lifecycle_creation_failed(window->browser_lifecycle);
         proton_engine_bridge_host_destroy(window->bridge);
         proton_browser_session_destroy(window->browser_session);
+        proton_platform_window_backend_finalized(window->platform, window);
         free(window);
         proton_engine_set_message(error, error_len,
                                   "failed to allocate browser state");
@@ -1075,6 +1076,7 @@ int32_t proton_engine_window_create(
         proton_browser_lifecycle_clear_owner(window->browser_lifecycle);
         proton_browser_session_destroy(window->browser_session);
         proton_engine_bridge_host_destroy(window->bridge);
+        proton_platform_window_backend_finalized(window->platform, window);
         free(window);
         proton_engine_set_message(error, error_len, "failed to allocate client");
         return PROTON_ERR_ENGINE;
@@ -1106,6 +1108,7 @@ int32_t proton_engine_window_create(
         proton_browser_lifecycle_clear_owner(window->browser_lifecycle);
         proton_browser_session_destroy(window->browser_session);
         proton_engine_bridge_host_destroy(window->bridge);
+        proton_platform_window_backend_finalized(window->platform, window);
         free(window);
         proton_engine_set_message(error, error_len, "window creation failed");
         return PROTON_ERR_PLATFORM;
@@ -1163,6 +1166,7 @@ int32_t proton_engine_window_create(
         proton_browser_lifecycle_clear_owner(window->browser_lifecycle);
         proton_browser_session_destroy(window->browser_session);
         proton_engine_bridge_host_destroy(window->bridge);
+        proton_platform_window_backend_finalized(window->platform, window);
         free(window);
         proton_engine_set_message(error, error_len,
                                   "failed to copy initial browser url");
@@ -1319,6 +1323,7 @@ static void proton_engine_window_free(proton_engine_window_t *window) {
   proton_engine_bridge_host_destroy(window->bridge);
   free(window->initial_url);
   proton_browser_session_destroy(window->browser_session);
+  proton_platform_window_backend_finalized(window->platform, window);
   free(window);
   proton_engine_window_unlock();
 }

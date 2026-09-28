@@ -889,6 +889,32 @@ int32_t proton_internal_cef_surface_attach(
 }
 
 
+int32_t proton_internal_cef_surface_detach(
+    proton_window_handle_t platform_window_handle) {
+  proton_window_slot_t *slot = NULL;
+  int32_t status = proton_get_window_for_destroy(platform_window_handle, &slot);
+  if (status == PROTON_ERR_DESTROYED) {
+    return PROTON_OK;
+  }
+  if (status != PROTON_OK) {
+    return status;
+  }
+  if (slot->presentation_surface == NULL) {
+    g_last_error[0] = '\0';
+    return PROTON_OK;
+  }
+  proton_engine_window_cookie_cleanup(slot->presentation_surface);
+  char engine_error[512] = {0};
+  status = proton_engine_window_detach_presentation(
+      slot->presentation_surface, engine_error, sizeof(engine_error));
+  if (status != PROTON_OK) {
+    return proton_set_engine_status(status, engine_error);
+  }
+  slot->presentation_surface = NULL;
+  g_last_error[0] = '\0';
+  return PROTON_OK;
+}
+
 int32_t proton_internal_window_create(
     proton_runtime_handle_t runtime, const char *title, int32_t width,
     int32_t height, const char *initial_url, int32_t size_hint,
@@ -953,6 +979,13 @@ int32_t proton_window_destroy(proton_window_handle_t window) {
     }
     slot->presentation_surface = NULL;
     proton_platform_window_attach_backend(slot->platform_window, NULL);
+  } else {
+    char engine_error[512] = {0};
+    status = proton_platform_window_destroy_shell(
+        slot->platform_window, engine_error, sizeof(engine_error));
+    if (status != PROTON_OK) {
+      return proton_set_engine_status(status, engine_error);
+    }
   }
   status = proton_window_enqueue_closed_once(runtime, slot);
   if (status != PROTON_OK) {

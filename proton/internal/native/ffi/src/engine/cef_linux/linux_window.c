@@ -1174,6 +1174,26 @@ int32_t proton_engine_window_focus(proton_engine_window_t *window,
   return PROTON_OK;
 }
 
+int32_t proton_engine_window_focus_presentation(
+    proton_engine_window_t *window, char *error, size_t error_len) {
+  if (window == NULL) {
+    proton_engine_set_message(error, error_len, "window is required");
+    return PROTON_ERR_INVALID_ARGUMENT;
+  }
+  if (proton_engine_window_browser(window) == NULL) {
+    return PROTON_OK;
+  }
+  cef_browser_host_t *host =
+      proton_engine_window_browser(window)->get_host(
+          proton_engine_window_browser(window));
+  if (host != NULL) {
+    host->set_focus(host, 1);
+    host->base.release((cef_base_ref_counted_t *)host);
+  }
+  return PROTON_OK;
+}
+
+
 int32_t proton_engine_window_set_title(proton_engine_window_t *window,
                                        const char *title,
                                        char *error,

@@ -4,6 +4,7 @@
 /* Private contracts shared by the Windows engine translation units. */
 #include "../../proton_engine.h"
 #include "../../proton_event.h"
+#include "../../proton_platform_window.h"
 #include "../cef_common/bridge_client.h"
 #include "../cef_common/browser_lifecycle.h"
 #include "../cef_common/browser_session.h"
@@ -63,7 +64,7 @@ void proton_engine_runtime_accessibility_requested(
 void proton_engine_register_window_class(void);
 
 struct proton_engine_window {
-  HWND hwnd;
+  proton_platform_window_t *platform;
   proton_engine_runtime_t *runtime;
   proton_window_id_t public_window_id;
   proton_browser_lifecycle_t *browser_lifecycle;

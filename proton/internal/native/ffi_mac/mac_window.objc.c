@@ -990,13 +990,15 @@ int32_t proton_engine_window_create(
       return PROTON_ERR_INVALID_ARGUMENT;
     }
     *out_window = NULL;
-    if (runtime == NULL || input_config == NULL ||
-        !proton_engine_runtime_initialized()) {
+    if (input_config == NULL ||
+        (!input_config->defer_presentation &&
+         (runtime == NULL || !proton_engine_runtime_initialized()))) {
       proton_engine_set_message(error, error_len, "runtime is not initialized");
       return PROTON_ERR_NOT_INITIALIZED;
     }
     proton_engine_window_config_t config = *input_config;
-    if (runtime->headless && config.titlebar_overlay) {
+    const int headless = runtime != NULL ? runtime->headless : 0;
+    if (headless && config.titlebar_overlay) {
       proton_engine_set_message(
           error, error_len,
           "titlebar overlay is not supported in headless mode");
@@ -1033,7 +1035,7 @@ int32_t proton_engine_window_create(
     window->closable = 1;
     window->fullscreenable = 1;
     window->enabled = 1;
-    window->headless = runtime->headless;
+    window->headless = headless;
     if (!config.defer_presentation) {
       window->bridge = proton_engine_bridge_host_create(
           runtime, config.public_window, config.bridge_config);

@@ -345,7 +345,7 @@ static int32_t proton_engine_begin_message_dialog(
         "native dialogs are not supported in headless mode");
     return PROTON_ERR_UNSUPPORTED;
   }
-  if (window != NULL && window->hwnd == NULL) {
+  if (window != NULL && proton_engine_window_hwnd(window) == NULL) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -375,7 +375,7 @@ static int32_t proton_engine_begin_message_dialog(
   request->window = window;
   request->public_window = proton_engine_window_public_id(window);
   request->level = level;
-  request->parent = window != NULL ? window->hwnd : NULL;
+  request->parent = window != NULL ? proton_engine_window_hwnd(window) : NULL;
   request->parent_was_enabled =
       request->parent != NULL && IsWindowEnabled(request->parent);
   request->id = g_next_dialog_id++;
@@ -503,7 +503,7 @@ int32_t proton_engine_window_begin_confirm_dialog(
                               "native dialogs are not supported in headless mode");
     return PROTON_ERR_UNSUPPORTED;
   }
-  if (window->hwnd == NULL) {
+  if (proton_engine_window_hwnd(window) == NULL) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -538,7 +538,7 @@ int32_t proton_engine_window_begin_confirm_dialog(
   request->window = window;
   request->public_window = proton_engine_window_public_id(window);
   request->level = level;
-  request->parent = window->hwnd;
+  request->parent = proton_engine_window_hwnd(window);
   request->parent_was_enabled = IsWindowEnabled(request->parent);
   request->kind = PROTON_ENGINE_WIN_DIALOG_KIND_CONFIRM;
   request->id = g_next_dialog_id++;
@@ -866,7 +866,7 @@ static int32_t proton_engine_window_begin_file_dialog(
                               "native dialogs are not supported in headless mode");
     return PROTON_ERR_UNSUPPORTED;
   }
-  if (window->hwnd == NULL) {
+  if (proton_engine_window_hwnd(window) == NULL) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -888,7 +888,7 @@ static int32_t proton_engine_window_begin_file_dialog(
     return PROTON_ERR_INVALID_ARGUMENT;
   }
   request->public_window = proton_engine_window_public_id(window);
-  request->parent = window->hwnd;
+  request->parent = proton_engine_window_hwnd(window);
   request->mode = mode;
   request->id = g_next_dialog_id++;
   if (g_next_dialog_id <= 0) {

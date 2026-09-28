@@ -29,6 +29,10 @@ typedef struct proton_platform_window {
 } proton_platform_window_t;
 
 PROTON_INTERNAL proton_platform_window_t *proton_platform_window_alloc(void);
+PROTON_INTERNAL int32_t proton_platform_window_materialize(
+    proton_platform_window_t *window, proton_engine_runtime_t *runtime,
+    proton_window_id_t public_window, char *error, size_t error_len);
+
 PROTON_INTERNAL int32_t proton_platform_window_configure(
     proton_platform_window_t *window, const char *title, int32_t width,
     int32_t height, int32_t size_hint, int32_t titlebar_overlay,

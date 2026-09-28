@@ -1426,6 +1426,74 @@ int32_t proton_engine_window_destroy(proton_engine_window_t *window,
   }
 }
 
+int32_t proton_platform_mac_window_show(
+    void *native_window, int32_t inactive, char *error, size_t error_len) {
+  @autoreleasepool {
+    NSWindow *window = (__bridge NSWindow *)native_window;
+    if (window == nil) {
+      proton_engine_set_message(error, error_len, "window is required");
+      return PROTON_ERR_INVALID_ARGUMENT;
+    }
+    if (inactive) {
+      [window orderFront:nil];
+    } else {
+      [window makeKeyAndOrderFront:nil];
+      [NSApp activateIgnoringOtherApps:YES];
+    }
+    return PROTON_OK;
+  }
+}
+
+int32_t proton_platform_mac_window_hide(
+    void *native_window, char *error, size_t error_len) {
+  @autoreleasepool {
+    NSWindow *window = (__bridge NSWindow *)native_window;
+    if (window == nil) {
+      proton_engine_set_message(error, error_len, "window is required");
+      return PROTON_ERR_INVALID_ARGUMENT;
+    }
+    [window orderOut:nil];
+    return PROTON_OK;
+  }
+}
+
+int32_t proton_platform_mac_window_set_title(
+    void *native_window, const char *title, char *error, size_t error_len) {
+  @autoreleasepool {
+    NSWindow *window = (__bridge NSWindow *)native_window;
+    if (window == nil) {
+      proton_engine_set_message(error, error_len, "window is required");
+      return PROTON_ERR_INVALID_ARGUMENT;
+    }
+    NSString *value =
+        [NSString stringWithUTF8String:title != NULL ? title : ""];
+    [window setTitle:value != nil ? value : @""];
+    return PROTON_OK;
+  }
+}
+
+int32_t proton_platform_mac_window_set_size(
+    void *native_window, int32_t width, int32_t height, char *error,
+    size_t error_len) {
+  @autoreleasepool {
+    NSWindow *window = (__bridge NSWindow *)native_window;
+    if (window == nil) {
+      proton_engine_set_message(error, error_len, "window is required");
+      return PROTON_ERR_INVALID_ARGUMENT;
+    }
+    if (width <= 0 || height <= 0) {
+      proton_engine_set_message(error, error_len,
+                                "width and height must be positive");
+      return PROTON_ERR_INVALID_ARGUMENT;
+    }
+    NSRect frame = [window frame];
+    frame.size.width = width;
+    frame.size.height = height;
+    [window setFrame:frame display:YES animate:NO];
+    return PROTON_OK;
+  }
+}
+
 int32_t proton_engine_window_show(proton_engine_window_t *window,
                                   char *error,
                                   size_t error_len) {

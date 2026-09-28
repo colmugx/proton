@@ -86,8 +86,8 @@ void proton_engine_window_unlock(void) {
 }
 static uint64_t g_next_view_native_id = 1;
 static atomic_bool g_external_message_pump_enabled = false;
-// Main-thread only, so a plain bool: set by proton_engine_host_loop_begin and
-// cleared by proton_engine_host_loop_end, both of which refuse other threads.
+// Main-thread only, so a plain bool: set by proton_engine_platform_host_loop_begin and
+// cleared by proton_engine_platform_host_loop_end, both of which refuse other threads.
 static bool g_host_loop_active = false;
 static atomic_llong g_scheduled_pump_deadline_ms = -1;
 static atomic_bool g_message_pump_active = false;
@@ -931,7 +931,7 @@ int32_t proton_engine_runtime_destroy_ready(proton_engine_runtime_t *runtime) {
          proton_browser_registry_shutdown_ready(runtime->browsers);
 }
 
-static void proton_engine_pump_appkit_cef_once(void) {
+static void proton_engine_pump_appkit_once(void) {
   // The host drives this pump from its own event loop and never enters the
   // AppKit run loop, so nothing ever drains the thread's autorelease state.
   // Without this pool every tick's autoreleased objects (NSEvent, AppKit
@@ -961,14 +961,13 @@ static void proton_engine_pump_appkit_cef_once(void) {
     if (sent_event) {
       [NSApp updateWindows];
     }
-    cef_do_message_loop_work();
   }
 }
 
 static void proton_engine_run_external_message_pump_once(void) {
   atomic_store_explicit(&g_message_pump_active, true, memory_order_release);
   proton_engine_reset_scheduled_pump();
-  proton_engine_pump_appkit_cef_once();
+  proton_engine_pump_appkit_once();
   atomic_store_explicit(&g_message_pump_active, false, memory_order_release);
 }
 
@@ -983,6 +982,7 @@ int32_t proton_engine_runtime_do_message_loop_work(
     }
     proton_engine_runtime_create_pending_browsers(runtime);
     proton_engine_run_external_message_pump_once();
+    cef_do_message_loop_work();
     return PROTON_OK;
   }
 }
@@ -999,7 +999,7 @@ static uint32_t proton_engine_runtime_ready_mask(
   return ready_mask & interest_mask;
 }
 
-int32_t proton_engine_host_loop_begin(char *error, size_t error_len) {
+int32_t proton_engine_platform_host_loop_begin(char *error, size_t error_len) {
   if (!pthread_main_np()) {
     proton_engine_set_message(error, error_len,
                               "the host loop must start on the main thread");
@@ -1024,7 +1024,7 @@ int32_t proton_engine_host_loop_begin(char *error, size_t error_len) {
   return PROTON_OK;
 }
 
-int32_t proton_engine_host_loop_poll(int32_t timeout_ms,
+int32_t proton_engine_platform_host_loop_poll(int32_t timeout_ms,
                                      uint32_t *out_ready_mask,
                                      char *error,
                                      size_t error_len) {
@@ -1032,9 +1032,6 @@ int32_t proton_engine_host_loop_poll(int32_t timeout_ms,
       NULL, PROTON_WAIT_ALL, timeout_ms, out_ready_mask, error, error_len);
   if (status != PROTON_OK) {
     return status;
-  }
-  if (!g_proton_cef_initialized) {
-    return PROTON_OK;
   }
   // The wait above only blocks; it does not dispatch. AppKit posts events to a
   // run-loop source but sends them from its own loop, which nobody is running,
@@ -1046,7 +1043,22 @@ int32_t proton_engine_host_loop_poll(int32_t timeout_ms,
   return PROTON_OK;
 }
 
-void proton_engine_host_loop_end(void) {
+int32_t proton_engine_presentation_poll(char *error, size_t error_len) {
+  (void)error;
+  (void)error_len;
+  if (g_proton_cef_initialized) {
+    @autoreleasepool {
+      atomic_store_explicit(&g_message_pump_active, true,
+                            memory_order_release);
+      cef_do_message_loop_work();
+      atomic_store_explicit(&g_message_pump_active, false,
+                            memory_order_release);
+    }
+  }
+  return PROTON_OK;
+}
+
+void proton_engine_platform_host_loop_end(void) {
   if (!pthread_main_np()) {
     return;
   }

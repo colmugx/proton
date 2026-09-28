@@ -644,11 +644,11 @@ int32_t proton_app_focus(int32_t steal_focus) {
   for (proton_window_slot_t *window = runtime->windows; window != NULL;
        window = window->next) {
     if (window->lifecycle != PROTON_WINDOW_LIVE || !window->visible ||
-        window->engine_window == NULL) {
+        window->presentation_surface == NULL) {
       continue;
     }
     char engine_error[512] = {0};
-    status = proton_engine_window_focus(window->engine_window, engine_error,
+    status = proton_engine_window_focus(window->presentation_surface, engine_error,
                                         sizeof(engine_error));
     if (status != PROTON_OK) {
       return proton_set_engine_status(status, engine_error);

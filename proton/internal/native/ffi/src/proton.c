@@ -133,7 +133,7 @@ int32_t proton_app_instance_attach_runtime(
   if (status != PROTON_OK) {
     return status;
   }
-  if (slot->engine_runtime == NULL) {
+  if (slot->presentation_runtime == NULL) {
     return proton_set_error(
         PROTON_ERR_UNSUPPORTED,
         "app instance activation requires the native engine");
@@ -146,7 +146,7 @@ int32_t proton_app_instance_attach_runtime(
   }
   char instance_error[512] = {0};
   status = proton_app_instance_attach_runtime_impl(
-      instance, slot->engine_runtime, instance_error, sizeof(instance_error));
+      instance, slot->presentation_runtime, instance_error, sizeof(instance_error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, instance_error);
   }
@@ -226,22 +226,34 @@ int32_t proton_internal_execute_process(
   return proton_set_engine_status(status, engine_error);
 }
 
-int32_t proton_internal_runtime_create(
-    int32_t use_bundled, const char *runtime_root, const char *helper_path,
-    const char *resources_dir, const char *locales_dir, const char *cache_dir,
-    const char *locale, const char *accept_languages,
-    const char *proxy_server, const char *proxy_bypass,
-    const char *dialog_ok_label, const char *dialog_cancel_label,
-    int32_t remote_debugging_port, int32_t headless,
-    int32_t accessibility_mode,
-    int32_t persist_session_cookies, proton_runtime_handle_t *out_runtime) {
+int32_t proton_internal_platform_runtime_create(
+    proton_runtime_handle_t *out_runtime) {
   if (out_runtime == NULL) {
     return proton_set_error(PROTON_ERR_INVALID_ARGUMENT,
                             "out_runtime is required");
   }
   *out_runtime = PROTON_INVALID_HANDLE;
+  return proton_runtime_slot_create(NULL, out_runtime);
+}
+
+int32_t proton_internal_cef_runtime_attach(
+    proton_runtime_handle_t runtime, int32_t use_bundled,
+    const char *runtime_root, const char *helper_path,
+    const char *resources_dir, const char *locales_dir, const char *cache_dir,
+    const char *locale, const char *accept_languages,
+    const char *proxy_server, const char *proxy_bypass,
+    const char *dialog_ok_label, const char *dialog_cancel_label,
+    int32_t remote_debugging_port, int32_t headless,
+    int32_t accessibility_mode, int32_t persist_session_cookies) {
+  proton_runtime_slot_t *slot = NULL;
+  int32_t status = proton_get_runtime(runtime, &slot);
+  if (status != PROTON_OK) return status;
+  if (slot->presentation_runtime != NULL) {
+    return proton_set_error(PROTON_ERR_ALREADY_INITIALIZED,
+                            "presentation runtime is already attached");
+  }
   proton_engine_runtime_config_t config;
-  int32_t status = proton_config_prepare_runtime(
+  status = proton_config_prepare_runtime(
       use_bundled, runtime_root, helper_path, resources_dir, locales_dir,
       cache_dir, locale, accept_languages, dialog_ok_label,
       dialog_cancel_label, remote_debugging_port, headless,
@@ -252,10 +264,6 @@ int32_t proton_internal_runtime_create(
   }
   config.proxy_server = proxy_server;
   config.proxy_bypass = proxy_bypass;
-  if (proton_has_active_runtime()) {
-    return proton_set_error(PROTON_ERR_ALREADY_INITIALIZED,
-                            "runtime is already initialized");
-  }
   proton_engine_runtime_t *engine_runtime = NULL;
   char engine_error[512] = {0};
   status = proton_config_probe_runtime(&config);
@@ -272,17 +280,33 @@ int32_t proton_internal_runtime_create(
                             "native engine returned no runtime state");
   }
 
-  status = proton_runtime_slot_create(engine_runtime, out_runtime);
-  if (status != PROTON_OK) {
-    if (engine_runtime != NULL) {
-      char engine_error[512] = {0};
-      (void)proton_engine_runtime_destroy(engine_runtime, engine_error,
-                                          sizeof(engine_error));
-    }
-    return status;
-  }
+  slot->presentation_runtime = engine_runtime;
   g_last_error[0] = '\0';
   return PROTON_OK;
+}
+
+int32_t proton_internal_runtime_create(
+    int32_t use_bundled, const char *runtime_root, const char *helper_path,
+    const char *resources_dir, const char *locales_dir, const char *cache_dir,
+    const char *locale, const char *accept_languages,
+    const char *proxy_server, const char *proxy_bypass,
+    const char *dialog_ok_label, const char *dialog_cancel_label,
+    int32_t remote_debugging_port, int32_t headless,
+    int32_t accessibility_mode, int32_t persist_session_cookies,
+    proton_runtime_handle_t *out_runtime) {
+  int32_t status = proton_internal_platform_runtime_create(out_runtime);
+  if (status != PROTON_OK) return status;
+  status = proton_internal_cef_runtime_attach(
+      *out_runtime, use_bundled, runtime_root, helper_path, resources_dir,
+      locales_dir, cache_dir, locale, accept_languages, proxy_server,
+      proxy_bypass, dialog_ok_label, dialog_cancel_label,
+      remote_debugging_port, headless, accessibility_mode,
+      persist_session_cookies);
+  if (status != PROTON_OK) {
+    proton_runtime_slot_destroy(*out_runtime);
+    *out_runtime = PROTON_INVALID_HANDLE;
+  }
+  return status;
 }
 
 int32_t proton_runtime_begin_destroy(proton_runtime_handle_t runtime) {
@@ -330,8 +354,8 @@ int32_t proton_runtime_destroy_ready(proton_runtime_handle_t runtime,
     return proton_set_error(PROTON_ERR_DESTROYED,
                             "runtime destroy has not begun");
   }
-  *out_ready = slot->engine_runtime == NULL ||
-                       proton_engine_runtime_destroy_ready(slot->engine_runtime)
+  *out_ready = slot->presentation_runtime == NULL ||
+                       proton_engine_runtime_destroy_ready(slot->presentation_runtime)
                    ? 1
                    : 0;
   g_last_error[0] = '\0';
@@ -351,19 +375,19 @@ int32_t proton_runtime_finish_destroy(proton_runtime_handle_t runtime) {
     return proton_set_error(PROTON_ERR_DESTROYED,
                             "runtime destroy has not begun");
   }
-  if (slot->engine_runtime != NULL &&
-      !proton_engine_runtime_destroy_ready(slot->engine_runtime)) {
+  if (slot->presentation_runtime != NULL &&
+      !proton_engine_runtime_destroy_ready(slot->presentation_runtime)) {
     return proton_set_error(PROTON_ERR_BUSY,
                             "runtime still owns closing browser windows");
   }
-  if (slot->engine_runtime != NULL) {
+  if (slot->presentation_runtime != NULL) {
     char engine_error[512] = {0};
-    status = proton_engine_runtime_destroy(slot->engine_runtime, engine_error,
+    status = proton_engine_runtime_destroy(slot->presentation_runtime, engine_error,
                                            sizeof(engine_error));
     if (status != PROTON_OK) {
       return proton_set_engine_status(status, engine_error);
     }
-    slot->engine_runtime = NULL;
+    slot->presentation_runtime = NULL;
   }
   proton_runtime_slot_destroy(slot);
   g_last_error[0] = '\0';
@@ -407,7 +431,8 @@ int32_t proton_host_loop_begin(void) {
   proton_event_dispatch_begin();
   char engine_error[512] = {0};
   int32_t status =
-      proton_engine_host_loop_begin(engine_error, sizeof(engine_error));
+      proton_engine_platform_host_loop_begin(engine_error,
+                                             sizeof(engine_error));
   if (status != PROTON_OK) {
     proton_event_dispatch_end();
     return proton_set_engine_status(status, engine_error);
@@ -436,14 +461,18 @@ int32_t proton_host_loop_poll(int32_t timeout_ms, uint32_t *out_ready_mask) {
      its own process-wide state to decide what to pump. */
   char engine_error[512] = {0};
   uint32_t ready_mask = PROTON_WAIT_NONE;
-  int32_t status = proton_engine_host_loop_poll(
+  int32_t status = proton_engine_platform_host_loop_poll(
       timeout_ms, &ready_mask, engine_error, sizeof(engine_error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, engine_error);
   }
+  status = proton_engine_presentation_poll(engine_error, sizeof(engine_error));
+  if (status != PROTON_OK) {
+    return proton_set_engine_status(status, engine_error);
+  }
   proton_runtime_slot_t *runtime = proton_get_active_runtime();
-  if (runtime != NULL && runtime->engine_runtime != NULL) {
-    proton_engine_runtime_collect(runtime->engine_runtime);
+  if (runtime != NULL && runtime->presentation_runtime != NULL) {
+    proton_engine_runtime_collect(runtime->presentation_runtime);
   }
   *out_ready_mask = ready_mask;
   g_last_error[0] = '\0';
@@ -455,7 +484,7 @@ void proton_host_loop_end(void) {
     return;
   }
   g_host_lifecycle = PROTON_HOST_ENDING;
-  proton_engine_host_loop_end();
+  proton_engine_platform_host_loop_end();
   proton_event_dispatch_end();
   g_host_lifecycle = PROTON_HOST_IDLE;
 }
@@ -484,14 +513,14 @@ int32_t proton_internal_runtime_set_menu(proton_runtime_handle_t runtime,
   if (status != PROTON_OK) {
     return status;
   }
-  if (slot->engine_runtime == NULL) {
+  if (slot->presentation_runtime == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "runtime menu requires native engine");
   }
 
   char engine_error[512] = {0};
   status = proton_engine_runtime_set_menu(
-      slot->engine_runtime, menu_bar, engine_error, sizeof(engine_error));
+      slot->presentation_runtime, menu_bar, engine_error, sizeof(engine_error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, engine_error);
   }
@@ -515,13 +544,13 @@ int32_t proton_internal_menu_popup(proton_window_handle_t window, int32_t x,
     return proton_set_error(PROTON_ERR_INVALID_ARGUMENT,
                             "popup menu requires at least one menu");
   }
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "window popup menu requires native engine");
   }
   char engine_error[512] = {0};
   status = proton_engine_window_popup_menu(
-      slot->engine_window, x, y, menu_bar, engine_error, sizeof(engine_error));
+      slot->presentation_surface, x, y, menu_bar, engine_error, sizeof(engine_error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, engine_error);
   }
@@ -711,12 +740,12 @@ int32_t proton_runtime_bridge_request_pending(
     return proton_set_error(PROTON_ERR_INVALID_ARGUMENT,
                             "positive request_id and out_pending are required");
   }
-  if (slot->engine_runtime == NULL) {
+  if (slot->presentation_runtime == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "bridge request requires native engine");
   }
   *out_pending = proton_engine_runtime_bridge_request_pending(
-      slot->engine_runtime, request_id);
+      slot->presentation_runtime, request_id);
   g_last_error[0] = '\0';
   return PROTON_OK;
 }
@@ -741,13 +770,13 @@ int32_t proton_runtime_respond_bridge_request(
     return proton_set_error(PROTON_ERR_INVALID_ARGUMENT,
                             "bridge response body_json is required");
   }
-  if (slot->engine_runtime == NULL) {
+  if (slot->presentation_runtime == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "bridge response requires native engine");
   }
   char engine_error[512] = {0};
   status = proton_engine_runtime_respond_bridge_request(
-      slot->engine_runtime, request_id, ok, body_json, engine_error,
+      slot->presentation_runtime, request_id, ok, body_json, engine_error,
       sizeof(engine_error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, engine_error);
@@ -755,6 +784,77 @@ int32_t proton_runtime_respond_bridge_request(
   g_last_error[0] = '\0';
   return PROTON_OK;
 }
+
+int32_t proton_internal_platform_window_create(
+    proton_runtime_handle_t runtime, int32_t width, int32_t height,
+    proton_window_handle_t *out_window) {
+  proton_runtime_slot_t *runtime_slot = NULL;
+  int32_t status = proton_get_runtime(runtime, &runtime_slot);
+  if (status != PROTON_OK) return status;
+  if (out_window == NULL) {
+    return proton_set_error(PROTON_ERR_INVALID_ARGUMENT,
+                            "out_window is required");
+  }
+  int64_t logical_id = proton_runtime_reserve_window_id(runtime_slot);
+  return proton_window_slot_create(runtime_slot, NULL, logical_id, width,
+                                   height, out_window);
+}
+
+int32_t proton_internal_cef_surface_attach(
+    proton_window_handle_t platform_window_handle, const char *title, int32_t width,
+    int32_t height, const char *initial_url, int32_t size_hint,
+    int32_t titlebar_overlay, int32_t theme_preference,
+    int32_t button_position_custom, int32_t button_position_x,
+    int32_t button_position_y,
+    int32_t navigation_policy,
+    const char *titlebar_minimize_label, const char *titlebar_maximize_label,
+    const char *titlebar_restore_label, const char *titlebar_close_label,
+    int32_t new_window_policy, int32_t download_policy,
+    int32_t certificate_policy, int32_t media_policy, int32_t devtools,
+    proton_bridge_config_owner_t *bridge_config,
+    proton_web_request_config_owner_t *web_request_config) {
+  proton_window_slot_t *platform_window = NULL;
+  int32_t status = proton_get_window(platform_window_handle, &platform_window);
+  if (status != PROTON_OK) return status;
+  if (platform_window->presentation_surface != NULL) {
+    return proton_set_error(PROTON_ERR_ALREADY_INITIALIZED,
+                            "presentation surface is already attached");
+  }
+  proton_runtime_slot_t *runtime_slot = platform_window->runtime;
+  proton_engine_window_config_t config;
+  status = proton_config_prepare_window(
+      title, width, height, initial_url, size_hint, titlebar_overlay,
+      theme_preference, navigation_policy, titlebar_minimize_label,
+      titlebar_maximize_label, titlebar_restore_label, titlebar_close_label,
+      new_window_policy, download_policy, certificate_policy, media_policy,
+      devtools, bridge_config->value, web_request_config->value, &config);
+  if (status != PROTON_OK) {
+    return status;
+  }
+  config.button_position_custom = button_position_custom;
+  config.button_position_x = button_position_x;
+  config.button_position_y = button_position_y;
+  int64_t logical_id = platform_window->logical_id;
+  config.public_window = logical_id;
+  proton_engine_window_t *engine_window = NULL;
+  if (runtime_slot->presentation_runtime != NULL) {
+    char engine_error[512] = {0};
+    status = proton_engine_window_create(
+        runtime_slot->presentation_runtime, &config, &engine_window,
+        engine_error, sizeof(engine_error));
+    if (status != PROTON_OK) {
+      return proton_set_engine_status(status, engine_error);
+    }
+    if (engine_window == NULL) {
+      return proton_set_error(PROTON_ERR_ENGINE,
+                              "native engine returned no window state");
+    }
+  }
+  platform_window->presentation_surface = engine_window;
+  g_last_error[0] = '\0';
+  return PROTON_OK;
+}
+
 
 int32_t proton_internal_window_create(
     proton_runtime_handle_t runtime, const char *title, int32_t width,
@@ -770,58 +870,22 @@ int32_t proton_internal_window_create(
     proton_bridge_config_owner_t *bridge_config,
     proton_web_request_config_owner_t *web_request_config,
     proton_window_handle_t *out_window) {
-  proton_runtime_slot_t *runtime_slot = NULL;
-  int32_t status = proton_get_runtime(runtime, &runtime_slot);
+  int32_t status = proton_internal_platform_window_create(
+      runtime, width, height, out_window);
+  if (status != PROTON_OK) return status;
+  status = proton_internal_cef_surface_attach(
+      *out_window, title, width, height, initial_url, size_hint,
+      titlebar_overlay, theme_preference, button_position_custom,
+      button_position_x, button_position_y, navigation_policy,
+      titlebar_minimize_label, titlebar_maximize_label,
+      titlebar_restore_label, titlebar_close_label, new_window_policy,
+      download_policy, certificate_policy, media_policy, devtools,
+      bridge_config, web_request_config);
   if (status != PROTON_OK) {
-    return status;
+    proton_window_slot_destroy(*out_window);
+    *out_window = PROTON_INVALID_HANDLE;
   }
-  if (out_window == NULL) {
-    return proton_set_error(PROTON_ERR_INVALID_ARGUMENT,
-                            "out_window is required");
-  }
-  proton_engine_window_config_t config;
-  status = proton_config_prepare_window(
-      title, width, height, initial_url, size_hint, titlebar_overlay,
-      theme_preference, navigation_policy, titlebar_minimize_label,
-      titlebar_maximize_label, titlebar_restore_label, titlebar_close_label,
-      new_window_policy, download_policy, certificate_policy, media_policy,
-      devtools, bridge_config->value, web_request_config->value, &config);
-  if (status != PROTON_OK) {
-    return status;
-  }
-  config.button_position_custom = button_position_custom;
-  config.button_position_x = button_position_x;
-  config.button_position_y = button_position_y;
-  int64_t logical_id = proton_runtime_reserve_window_id(runtime_slot);
-  config.public_window = logical_id;
-
-  proton_engine_window_t *engine_window = NULL;
-  if (runtime_slot->engine_runtime != NULL) {
-    char engine_error[512] = {0};
-    status = proton_engine_window_create(runtime_slot->engine_runtime, &config,
-                                         &engine_window, engine_error,
-                                         sizeof(engine_error));
-    if (status != PROTON_OK) {
-      return proton_set_engine_status(status, engine_error);
-    }
-    if (engine_window == NULL) {
-      return proton_set_error(PROTON_ERR_ENGINE,
-                              "native engine returned no window state");
-    }
-  }
-
-  status = proton_window_slot_create(runtime_slot, engine_window, logical_id,
-                                     width, height, out_window);
-  if (status != PROTON_OK) {
-    if (engine_window != NULL) {
-      char engine_error[512] = {0};
-      (void)proton_engine_window_destroy(engine_window, engine_error,
-                                         sizeof(engine_error));
-    }
-    return status;
-  }
-  g_last_error[0] = '\0';
-  return PROTON_OK;
+  return status;
 }
 
 int32_t proton_window_destroy(proton_window_handle_t window) {
@@ -841,15 +905,15 @@ int32_t proton_window_destroy(proton_window_handle_t window) {
   }
   proton_window_slot_begin_destroy(slot);
   proton_destroy_views_for_window(slot);
-  if (slot->engine_window != NULL) {
-    proton_engine_window_cookie_cleanup(slot->engine_window);
+  if (slot->presentation_surface != NULL) {
+    proton_engine_window_cookie_cleanup(slot->presentation_surface);
     char engine_error[512] = {0};
-    status = proton_engine_window_destroy(slot->engine_window, engine_error,
+    status = proton_engine_window_destroy(slot->presentation_surface, engine_error,
                                           sizeof(engine_error));
     if (status != PROTON_OK) {
       return proton_set_engine_status(status, engine_error);
     }
-    slot->engine_window = NULL;
+    slot->presentation_surface = NULL;
   }
   status = proton_window_enqueue_closed_once(runtime, slot);
   if (status != PROTON_OK) {
@@ -866,9 +930,9 @@ int32_t proton_window_show(proton_window_handle_t window) {
   if (status != PROTON_OK) {
     return status;
   }
-  if (slot->engine_window != NULL) {
+  if (slot->presentation_surface != NULL) {
     char engine_error[512] = {0};
-    status = proton_engine_window_show(slot->engine_window, engine_error,
+    status = proton_engine_window_show(slot->presentation_surface, engine_error,
                                        sizeof(engine_error));
     if (status != PROTON_OK) {
       return proton_set_engine_status(status, engine_error);
@@ -883,10 +947,10 @@ int32_t proton_window_show_inactive(proton_window_handle_t window) {
   proton_window_slot_t *slot = NULL;
   int32_t status = proton_get_window(window, &slot);
   if (status != PROTON_OK) return status;
-  if (slot->engine_window != NULL) {
+  if (slot->presentation_surface != NULL) {
     char engine_error[512] = {0};
     status = proton_engine_window_show_inactive(
-        slot->engine_window, engine_error, sizeof(engine_error));
+        slot->presentation_surface, engine_error, sizeof(engine_error));
     if (status != PROTON_OK) return proton_set_engine_status(status, engine_error);
   }
   slot->visible = true;
@@ -900,9 +964,9 @@ int32_t proton_window_hide(proton_window_handle_t window) {
   if (status != PROTON_OK) {
     return status;
   }
-  if (slot->engine_window != NULL) {
+  if (slot->presentation_surface != NULL) {
     char engine_error[512] = {0};
-    status = proton_engine_window_hide(slot->engine_window, engine_error,
+    status = proton_engine_window_hide(slot->presentation_surface, engine_error,
                                        sizeof(engine_error));
     if (status != PROTON_OK) {
       return proton_set_engine_status(status, engine_error);
@@ -926,9 +990,9 @@ int32_t proton_window_close(proton_window_handle_t window) {
     g_last_error[0] = '\0';
     return PROTON_OK;
   }
-  if (slot->engine_window != NULL) {
+  if (slot->presentation_surface != NULL) {
     char engine_error[512] = {0};
-    status = proton_engine_window_close(slot->engine_window, engine_error,
+    status = proton_engine_window_close(slot->presentation_surface, engine_error,
                                         sizeof(engine_error));
     if (status != PROTON_OK) {
       return proton_set_engine_status(status, engine_error);
@@ -959,9 +1023,9 @@ int32_t proton_window_focus(proton_window_handle_t window) {
   if (status != PROTON_OK) {
     return status;
   }
-  if (slot->engine_window != NULL) {
+  if (slot->presentation_surface != NULL) {
     char engine_error[512] = {0};
-    status = proton_engine_window_focus(slot->engine_window, engine_error,
+    status = proton_engine_window_focus(slot->presentation_surface, engine_error,
                                         sizeof(engine_error));
     if (status != PROTON_OK) {
       return proton_set_engine_status(status, engine_error);
@@ -980,9 +1044,9 @@ int32_t proton_window_set_title(proton_window_handle_t window, const char *title
   if (title == NULL) {
     return proton_set_error(PROTON_ERR_INVALID_ARGUMENT, "title is required");
   }
-  if (slot->engine_window != NULL) {
+  if (slot->presentation_surface != NULL) {
     char engine_error[512] = {0};
-    status = proton_engine_window_set_title(slot->engine_window, title,
+    status = proton_engine_window_set_title(slot->presentation_surface, title,
                                             engine_error,
                                             sizeof(engine_error));
     if (status != PROTON_OK) {
@@ -1001,12 +1065,12 @@ int32_t proton_window_set_icon(proton_window_handle_t window, const char *path) 
   proton_window_slot_t *slot = NULL;
   int32_t status = proton_get_window(window, &slot);
   if (status != PROTON_OK) return status;
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "window icon requires native engine");
   }
   char engine_error[512] = {0};
-  status = proton_engine_window_set_icon(slot->engine_window, path,
+  status = proton_engine_window_set_icon(slot->presentation_surface, path,
                                          engine_error, sizeof(engine_error));
   if (status != PROTON_OK) return proton_set_engine_status(status, engine_error);
   g_last_error[0] = '\0';
@@ -1039,14 +1103,14 @@ int32_t proton_window_set_parent(proton_window_handle_t window,
     return proton_set_error(PROTON_ERR_INVALID_ARGUMENT,
                             "modal window requires a parent");
   }
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "window parenting requires native engine");
   }
   char engine_error[512] = {0};
   status = proton_engine_window_set_parent(
-      slot->engine_window,
-      parent_slot != NULL ? parent_slot->engine_window : NULL, modal,
+      slot->presentation_surface,
+      parent_slot != NULL ? parent_slot->presentation_surface : NULL, modal,
       engine_error, sizeof(engine_error));
   if (status != PROTON_OK) return proton_set_engine_status(status, engine_error);
   g_last_error[0] = '\0';
@@ -1064,9 +1128,9 @@ int32_t proton_window_set_size(proton_window_handle_t window, int32_t width,
     return proton_set_error(PROTON_ERR_INVALID_ARGUMENT,
                             "width and height must be positive");
   }
-  if (slot->engine_window != NULL) {
+  if (slot->presentation_surface != NULL) {
     char engine_error[512] = {0};
-    status = proton_engine_window_set_size(slot->engine_window, width, height,
+    status = proton_engine_window_set_size(slot->presentation_surface, width, height,
                                            engine_error,
                                            sizeof(engine_error));
     if (status != PROTON_OK) {
@@ -1088,13 +1152,13 @@ int32_t proton_window_set_content_size(proton_window_handle_t window,
   proton_window_slot_t *slot = NULL;
   int32_t status = proton_get_window(window, &slot);
   if (status != PROTON_OK) return status;
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "content size requires native engine");
   }
   char engine_error[512] = {0};
   status = proton_engine_window_set_content_size(
-      slot->engine_window, width, height, engine_error, sizeof(engine_error));
+      slot->presentation_surface, width, height, engine_error, sizeof(engine_error));
   if (status != PROTON_OK) return proton_set_engine_status(status, engine_error);
   g_last_error[0] = '\0';
   return PROTON_OK;
@@ -1110,13 +1174,13 @@ int32_t proton_window_get_content_size(proton_window_handle_t window,
   proton_window_slot_t *slot = NULL;
   int32_t status = proton_get_window(window, &slot);
   if (status != PROTON_OK) return status;
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "content size requires native engine");
   }
   char engine_error[512] = {0};
   status = proton_engine_window_get_content_size(
-      slot->engine_window, out_width, out_height, engine_error,
+      slot->presentation_surface, out_width, out_height, engine_error,
       sizeof(engine_error));
   if (status != PROTON_OK) return proton_set_engine_status(status, engine_error);
   g_last_error[0] = '\0';
@@ -1136,13 +1200,13 @@ int32_t proton_window_get_titlebar_area(proton_window_handle_t window,
   proton_window_slot_t *slot = NULL;
   int32_t status = proton_get_window(window, &slot);
   if (status != PROTON_OK) return status;
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "titlebar area requires native engine");
   }
   char engine_error[512] = {0};
   status = proton_engine_window_get_titlebar_area(
-      slot->engine_window, out_x, out_y, out_width, out_height,
+      slot->presentation_surface, out_x, out_y, out_width, out_height,
       out_zoom_percent, engine_error, sizeof(engine_error));
   if (status != PROTON_OK) return proton_set_engine_status(status, engine_error);
   g_last_error[0] = '\0';
@@ -1157,12 +1221,12 @@ proton_window_apply_action(proton_window_handle_t window,
   if (status != PROTON_OK) {
     return status;
   }
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "window operation requires native engine");
   }
   char engine_error[512] = {0};
-  status = proton_engine_window_apply(slot->engine_window, action,
+  status = proton_engine_window_apply(slot->presentation_surface, action,
                                       engine_error, sizeof(engine_error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, engine_error);
@@ -1278,13 +1342,13 @@ int32_t proton_window_set_minimum_size(proton_window_handle_t window,
   if (status != PROTON_OK) {
     return status;
   }
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "window size constraints require native engine");
   }
   char engine_error[512] = {0};
   status = proton_engine_window_set_minimum_size(
-      slot->engine_window, width, height, engine_error, sizeof(engine_error));
+      slot->presentation_surface, width, height, engine_error, sizeof(engine_error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, engine_error);
   }
@@ -1303,13 +1367,13 @@ int32_t proton_window_set_maximum_size(proton_window_handle_t window,
   if (status != PROTON_OK) {
     return status;
   }
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "window size constraints require native engine");
   }
   char engine_error[512] = {0};
   status = proton_engine_window_set_maximum_size(
-      slot->engine_window, width, height, engine_error, sizeof(engine_error));
+      slot->presentation_surface, width, height, engine_error, sizeof(engine_error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, engine_error);
   }
@@ -1328,13 +1392,13 @@ int32_t proton_window_set_aspect_ratio(proton_window_handle_t window,
   if (status != PROTON_OK) {
     return status;
   }
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "window aspect ratio requires native engine");
   }
   char engine_error[512] = {0};
   status = proton_engine_window_set_aspect_ratio(
-      slot->engine_window, aspect_ratio, engine_error, sizeof(engine_error));
+      slot->presentation_surface, aspect_ratio, engine_error, sizeof(engine_error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, engine_error);
   }
@@ -1353,13 +1417,13 @@ int32_t proton_window_set_movable(proton_window_handle_t window,
   if (status != PROTON_OK) {
     return status;
   }
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "window movement requires native engine");
   }
   char engine_error[512] = {0};
   status = proton_engine_window_set_movable(
-      slot->engine_window, movable, engine_error, sizeof(engine_error));
+      slot->presentation_surface, movable, engine_error, sizeof(engine_error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, engine_error);
   }
@@ -1383,13 +1447,13 @@ int32_t proton_window_set_opacity(proton_window_handle_t window,
   if (status != PROTON_OK) {
     return status;
   }
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "window opacity requires native engine");
   }
   char engine_error[512] = {0};
   status = proton_engine_window_set_opacity(
-      slot->engine_window, opacity, engine_error, sizeof(engine_error));
+      slot->presentation_surface, opacity, engine_error, sizeof(engine_error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, engine_error);
   }
@@ -1408,13 +1472,13 @@ int32_t proton_window_set_skip_taskbar(proton_window_handle_t window,
   if (status != PROTON_OK) {
     return status;
   }
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "taskbar visibility requires native engine");
   }
   char engine_error[512] = {0};
   status = proton_engine_window_set_skip_taskbar(
-      slot->engine_window, skip, engine_error, sizeof(engine_error));
+      slot->presentation_surface, skip, engine_error, sizeof(engine_error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, engine_error);
   }
@@ -1433,13 +1497,13 @@ int32_t proton_window_set_content_protection(proton_window_handle_t window,
   if (status != PROTON_OK) {
     return status;
   }
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "content protection requires native engine");
   }
   char engine_error[512] = {0};
   status = proton_engine_window_set_content_protection(
-      slot->engine_window, enabled, engine_error, sizeof(engine_error));
+      slot->presentation_surface, enabled, engine_error, sizeof(engine_error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, engine_error);
   }
@@ -1458,13 +1522,13 @@ int32_t proton_window_set_minimizable(proton_window_handle_t window,
   if (status != PROTON_OK) {
     return status;
   }
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "window minimizability requires native engine");
   }
   char engine_error[512] = {0};
   status = proton_engine_window_set_minimizable(
-      slot->engine_window, minimizable, engine_error, sizeof(engine_error));
+      slot->presentation_surface, minimizable, engine_error, sizeof(engine_error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, engine_error);
   }
@@ -1483,13 +1547,13 @@ int32_t proton_window_set_maximizable(proton_window_handle_t window,
   if (status != PROTON_OK) {
     return status;
   }
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "window maximizability requires native engine");
   }
   char engine_error[512] = {0};
   status = proton_engine_window_set_maximizable(
-      slot->engine_window, maximizable, engine_error, sizeof(engine_error));
+      slot->presentation_surface, maximizable, engine_error, sizeof(engine_error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, engine_error);
   }
@@ -1508,13 +1572,13 @@ int32_t proton_window_set_closable(proton_window_handle_t window,
   if (status != PROTON_OK) {
     return status;
   }
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "window closability requires native engine");
   }
   char engine_error[512] = {0};
   status = proton_engine_window_set_closable(
-      slot->engine_window, closable, engine_error, sizeof(engine_error));
+      slot->presentation_surface, closable, engine_error, sizeof(engine_error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, engine_error);
   }
@@ -1529,12 +1593,12 @@ int32_t proton_window_set_button_position(
   if (status != PROTON_OK) {
     return status;
   }
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED, "native engine required");
   }
   char error[512] = {0};
   status = proton_engine_window_set_button_position(
-      slot->engine_window, custom, x, y, error, sizeof(error));
+      slot->presentation_surface, custom, x, y, error, sizeof(error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, error);
   }
@@ -1552,12 +1616,12 @@ int32_t proton_window_get_button_position(
   if (status != PROTON_OK) {
     return status;
   }
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED, "native engine required");
   }
   char error[512] = {0};
   status = proton_engine_window_get_button_position(
-      slot->engine_window, custom, x, y, error, sizeof(error));
+      slot->presentation_surface, custom, x, y, error, sizeof(error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, error);
   }
@@ -1574,13 +1638,13 @@ int32_t proton_window_set_button_visibility(proton_window_handle_t window,
   proton_window_slot_t *slot = NULL;
   int32_t status = proton_get_window(window, &slot);
   if (status != PROTON_OK) return status;
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "window button visibility requires native engine");
   }
   char engine_error[512] = {0};
   status = proton_engine_window_set_button_visibility(
-      slot->engine_window, visible, engine_error, sizeof(engine_error));
+      slot->presentation_surface, visible, engine_error, sizeof(engine_error));
   if (status != PROTON_OK) return proton_set_engine_status(status, engine_error);
   g_last_error[0] = '\0';
   return PROTON_OK;
@@ -1597,13 +1661,13 @@ int32_t proton_window_set_focusable(proton_window_handle_t window,
   if (status != PROTON_OK) {
     return status;
   }
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "window focusability requires native engine");
   }
   char engine_error[512] = {0};
   status = proton_engine_window_set_focusable(
-      slot->engine_window, focusable, engine_error, sizeof(engine_error));
+      slot->presentation_surface, focusable, engine_error, sizeof(engine_error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, engine_error);
   }
@@ -1620,13 +1684,13 @@ int32_t proton_window_set_fullscreenable(proton_window_handle_t window,
   proton_window_slot_t *slot = NULL;
   int32_t status = proton_get_window(window, &slot);
   if (status != PROTON_OK) return status;
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "window fullscreenability requires native engine");
   }
   char engine_error[512] = {0};
   status = proton_engine_window_set_fullscreenable(
-      slot->engine_window, fullscreenable, engine_error, sizeof(engine_error));
+      slot->presentation_surface, fullscreenable, engine_error, sizeof(engine_error));
   if (status != PROTON_OK) return proton_set_engine_status(status, engine_error);
   g_last_error[0] = '\0';
   return PROTON_OK;
@@ -1641,13 +1705,13 @@ int32_t proton_window_set_has_shadow(proton_window_handle_t window,
   proton_window_slot_t *slot = NULL;
   int32_t status = proton_get_window(window, &slot);
   if (status != PROTON_OK) return status;
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "window shadow requires native engine");
   }
   char engine_error[512] = {0};
   status = proton_engine_window_set_has_shadow(
-      slot->engine_window, has_shadow, engine_error, sizeof(engine_error));
+      slot->presentation_surface, has_shadow, engine_error, sizeof(engine_error));
   if (status != PROTON_OK) return proton_set_engine_status(status, engine_error);
   g_last_error[0] = '\0';
   return PROTON_OK;
@@ -1663,13 +1727,13 @@ int32_t proton_window_set_ignore_mouse_events(proton_window_handle_t window,
   proton_window_slot_t *slot = NULL;
   int32_t status = proton_get_window(window, &slot);
   if (status != PROTON_OK) return status;
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "mouse event handling requires native engine");
   }
   char engine_error[512] = {0};
   status = proton_engine_window_set_ignore_mouse_events(
-      slot->engine_window, ignore, forward, engine_error, sizeof(engine_error));
+      slot->presentation_surface, ignore, forward, engine_error, sizeof(engine_error));
   if (status != PROTON_OK) return proton_set_engine_status(status, engine_error);
   g_last_error[0] = '\0';
   return PROTON_OK;
@@ -1680,13 +1744,13 @@ int32_t proton_window_set_background_color(proton_window_handle_t window,
   proton_window_slot_t *slot = NULL;
   int32_t status = proton_get_window(window, &slot);
   if (status != PROTON_OK) return status;
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "window background color requires native engine");
   }
   char engine_error[512] = {0};
   status = proton_engine_window_set_background_color(
-      slot->engine_window, color, engine_error, sizeof(engine_error));
+      slot->presentation_surface, color, engine_error, sizeof(engine_error));
   if (status != PROTON_OK) return proton_set_engine_status(status, engine_error);
   g_last_error[0] = '\0';
   return PROTON_OK;
@@ -1702,13 +1766,13 @@ int32_t proton_window_set_theme(proton_window_handle_t window,
   proton_window_slot_t *slot = NULL;
   int32_t status = proton_get_window(window, &slot);
   if (status != PROTON_OK) return status;
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "window theme requires native engine");
   }
   char engine_error[512] = {0};
   status = proton_engine_window_set_theme(
-      slot->engine_window,
+      slot->presentation_surface,
       (proton_window_theme_preference_t)theme_preference,
       engine_error, sizeof(engine_error));
   if (status != PROTON_OK) return proton_set_engine_status(status, engine_error);
@@ -1725,13 +1789,13 @@ int32_t proton_window_set_visible_on_all_workspaces(
   proton_window_slot_t *slot = NULL;
   int32_t status = proton_get_window(window, &slot);
   if (status != PROTON_OK) return status;
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "workspace visibility requires native engine");
   }
   char engine_error[512] = {0};
   status = proton_engine_window_set_visible_on_all_workspaces(
-      slot->engine_window, visible, engine_error, sizeof(engine_error));
+      slot->presentation_surface, visible, engine_error, sizeof(engine_error));
   if (status != PROTON_OK) return proton_set_engine_status(status, engine_error);
   g_last_error[0] = '\0';
   return PROTON_OK;
@@ -1746,12 +1810,12 @@ int32_t proton_window_set_enabled(proton_window_handle_t window,
   proton_window_slot_t *slot = NULL;
   int32_t status = proton_get_window(window, &slot);
   if (status != PROTON_OK) return status;
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "window enabled state requires native engine");
   }
   char engine_error[512] = {0};
-  status = proton_engine_window_set_enabled(slot->engine_window, enabled,
+  status = proton_engine_window_set_enabled(slot->presentation_surface, enabled,
                                             engine_error, sizeof(engine_error));
   if (status != PROTON_OK) return proton_set_engine_status(status, engine_error);
   g_last_error[0] = '\0';
@@ -1782,13 +1846,13 @@ int32_t proton_window_set_audio_muted(proton_window_handle_t window,
   if (status != PROTON_OK) {
     return status;
   }
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "browser audio requires native engine");
   }
   char engine_error[512] = {0};
   status = proton_engine_window_set_audio_muted(
-      slot->engine_window, muted, engine_error, sizeof(engine_error));
+      slot->presentation_surface, muted, engine_error, sizeof(engine_error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, engine_error);
   }
@@ -1807,13 +1871,13 @@ int32_t proton_window_is_audio_muted(proton_window_handle_t window,
   if (status != PROTON_OK) {
     return status;
   }
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "browser audio requires native engine");
   }
   char engine_error[512] = {0};
   status = proton_engine_window_is_audio_muted(
-      slot->engine_window, out_muted, engine_error, sizeof(engine_error));
+      slot->presentation_surface, out_muted, engine_error, sizeof(engine_error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, engine_error);
   }
@@ -1837,13 +1901,13 @@ int32_t proton_window_set_progress_bar(proton_window_handle_t window,
   if (status != PROTON_OK) {
     return status;
   }
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "window progress requires native engine");
   }
   char engine_error[512] = {0};
   status = proton_engine_window_set_progress_bar(
-      slot->engine_window, progress, mode, engine_error, sizeof(engine_error));
+      slot->presentation_surface, progress, mode, engine_error, sizeof(engine_error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, engine_error);
   }
@@ -1863,7 +1927,7 @@ int32_t proton_window_set_overlay_icon(proton_window_handle_t window,
   if (status != PROTON_OK) {
     return status;
   }
-  if (window_slot->engine_window == NULL) {
+  if (window_slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "window overlay icon requires native engine");
   }
@@ -1878,7 +1942,7 @@ int32_t proton_window_set_overlay_icon(proton_window_handle_t window,
   }
   char engine_error[512] = {0};
   status = proton_engine_window_set_overlay_icon(
-      window_slot->engine_window, engine_image, description, engine_error,
+      window_slot->presentation_surface, engine_image, description, engine_error,
       sizeof(engine_error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, engine_error);
@@ -1898,13 +1962,13 @@ int32_t proton_window_set_thumbnail_tooltip(proton_window_handle_t window,
   if (status != PROTON_OK) {
     return status;
   }
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "window thumbnail tooltip requires native engine");
   }
   char engine_error[512] = {0};
   status = proton_engine_window_set_thumbnail_tooltip(
-      slot->engine_window, tooltip, engine_error, sizeof(engine_error));
+      slot->presentation_surface, tooltip, engine_error, sizeof(engine_error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, engine_error);
   }
@@ -1990,7 +2054,7 @@ int32_t proton_window_set_thumbar_buttons(proton_window_handle_t window,
   if (status != PROTON_OK) {
     return status;
   }
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "thumbar buttons require native engine");
   }
@@ -2015,7 +2079,7 @@ int32_t proton_window_set_thumbar_buttons(proton_window_handle_t window,
   }
   char engine_error[512] = {0};
   status = proton_engine_window_set_thumbar_buttons(
-      slot->engine_window, engine_buttons, button_count, out_applied,
+      slot->presentation_surface, engine_buttons, button_count, out_applied,
       engine_error, sizeof(engine_error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, engine_error);
@@ -2035,13 +2099,13 @@ int32_t proton_window_flash_frame(proton_window_handle_t window,
   if (status != PROTON_OK) {
     return status;
   }
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "window attention requires native engine");
   }
   char engine_error[512] = {0};
   status = proton_engine_window_flash_frame(
-      slot->engine_window, flash, engine_error, sizeof(engine_error));
+      slot->presentation_surface, flash, engine_error, sizeof(engine_error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, engine_error);
   }
@@ -2068,10 +2132,10 @@ int32_t proton_window_get_state(proton_window_handle_t window,
       .zoom_percent = 100,
       .visible = slot->visible ? 1 : 0,
   };
-  if (slot->engine_window != NULL) {
+  if (slot->presentation_surface != NULL) {
     char engine_error[512] = {0};
     status = proton_engine_window_get_state(
-        slot->engine_window, &state, engine_error, sizeof(engine_error));
+        slot->presentation_surface, &state, engine_error, sizeof(engine_error));
     if (status != PROTON_OK) {
       return proton_set_engine_status(status, engine_error);
     }
@@ -2152,13 +2216,13 @@ int32_t proton_window_set_close_interception(proton_window_handle_t window,
   if (status != PROTON_OK) {
     return status;
   }
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "close interception requires native engine");
   }
   char engine_error[512] = {0};
   status = proton_engine_window_set_close_interception(
-      slot->engine_window, enabled, engine_error, sizeof(engine_error));
+      slot->presentation_surface, enabled, engine_error, sizeof(engine_error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, engine_error);
   }
@@ -2188,13 +2252,13 @@ int32_t proton_window_respond_close_request(proton_window_handle_t window,
     return proton_set_error(PROTON_ERR_DESTROYED,
                             "window close request is no longer active");
   }
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "close interception requires native engine");
   }
   char engine_error[512] = {0};
   status = proton_engine_window_respond_close_request(
-      slot->engine_window, (uint64_t)request_id, allow, engine_error,
+      slot->presentation_surface, (uint64_t)request_id, allow, engine_error,
       sizeof(engine_error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, engine_error);
@@ -2217,9 +2281,9 @@ int32_t proton_window_load_url(proton_window_handle_t window, const char *url) {
   if (url == NULL || url[0] == '\0') {
     return proton_set_error(PROTON_ERR_INVALID_ARGUMENT, "url is required");
   }
-  if (slot->engine_window != NULL) {
+  if (slot->presentation_surface != NULL) {
     char engine_error[512] = {0};
-    status = proton_engine_window_load_url(slot->engine_window, url,
+    status = proton_engine_window_load_url(slot->presentation_surface, url,
                                            engine_error,
                                            sizeof(engine_error));
     if (status != PROTON_OK) {
@@ -2240,9 +2304,9 @@ int32_t proton_window_eval(proton_window_handle_t window, const char *script) {
   if (script == NULL) {
     return proton_set_error(PROTON_ERR_INVALID_ARGUMENT, "script is required");
   }
-  if (slot->engine_window != NULL) {
+  if (slot->presentation_surface != NULL) {
     char engine_error[512] = {0};
-    status = proton_engine_window_eval(slot->engine_window, script,
+    status = proton_engine_window_eval(slot->presentation_surface, script,
                                        engine_error,
                                        sizeof(engine_error));
     if (status != PROTON_OK) {
@@ -2265,13 +2329,13 @@ int32_t proton_window_browser_command(proton_window_handle_t window,
     return proton_set_error(PROTON_ERR_INVALID_ARGUMENT,
                             "browser command fields are invalid");
   }
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "browser commands require native engine");
   }
   char engine_error[512] = {0};
   status = proton_engine_window_browser_command(
-      slot->engine_window, command, download_id, engine_error,
+      slot->presentation_surface, command, download_id, engine_error,
       sizeof(engine_error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, engine_error);
@@ -2298,13 +2362,13 @@ int32_t proton_window_navigation_history_json(proton_window_handle_t window,
   if (status != PROTON_OK) {
     return status;
   }
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "navigation history requires native engine");
   }
   char engine_error[512] = {0};
   status = proton_engine_window_navigation_history_json(
-      slot->engine_window, buffer, buffer_len, out_required_len, engine_error,
+      slot->presentation_surface, buffer, buffer_len, out_required_len, engine_error,
       sizeof(engine_error));
   if (status < 0) {
     return proton_set_engine_status(status, engine_error);
@@ -2328,13 +2392,13 @@ int32_t proton_window_insert_page_css(proton_window_handle_t window,
   if (status != PROTON_OK) {
     return status;
   }
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "inserted CSS requires native engine");
   }
   char engine_error[512] = {0};
   status = proton_engine_window_insert_page_css(
-      slot->engine_window, css, out_key, engine_error, sizeof(engine_error));
+      slot->presentation_surface, css, out_key, engine_error, sizeof(engine_error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, engine_error);
   }
@@ -2353,12 +2417,12 @@ int32_t proton_window_remove_page_css(proton_window_handle_t window,
   if (status != PROTON_OK) {
     return status;
   }
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "inserted CSS requires native engine");
   }
   char engine_error[512] = {0};
-  status = proton_engine_window_remove_page_css(slot->engine_window, key,
+  status = proton_engine_window_remove_page_css(slot->presentation_surface, key,
                                                 engine_error,
                                                 sizeof(engine_error));
   if (status != PROTON_OK) {
@@ -2377,13 +2441,13 @@ int32_t proton_window_get_browser_focus_state(
     return proton_set_error(PROTON_ERR_INVALID_ARGUMENT,
                             "browser focus output is required");
   }
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "browser focus state requires native engine");
   }
   char engine_error[512] = {0};
   status = proton_engine_window_get_browser_focus_state(
-      slot->engine_window, out_focused, engine_error, sizeof(engine_error));
+      slot->presentation_surface, out_focused, engine_error, sizeof(engine_error));
   if (status != PROTON_OK) return proton_set_engine_status(status, engine_error);
   g_last_error[0] = '\0';
   return PROTON_OK;
@@ -2398,13 +2462,13 @@ int32_t proton_window_get_devtools_state(
     return proton_set_error(PROTON_ERR_INVALID_ARGUMENT,
                             "DevTools state output is required");
   }
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "DevTools state requires native engine");
   }
   char engine_error[512] = {0};
   status = proton_engine_window_get_devtools_state(
-      slot->engine_window, out_opened, engine_error, sizeof(engine_error));
+      slot->presentation_surface, out_opened, engine_error, sizeof(engine_error));
   if (status != PROTON_OK) return proton_set_engine_status(status, engine_error);
   g_last_error[0] = '\0';
   return PROTON_OK;
@@ -2416,13 +2480,13 @@ int32_t proton_window_get_navigation_state(
   proton_window_slot_t *slot = NULL;
   int32_t status = proton_get_window(window, &slot);
   if (status != PROTON_OK) return status;
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "navigation state requires native engine");
   }
   char engine_error[512] = {0};
   status = proton_engine_window_get_navigation_state(
-      slot->engine_window, out_can_go_back, out_can_go_forward, engine_error,
+      slot->presentation_surface, out_can_go_back, out_can_go_forward, engine_error,
       sizeof(engine_error));
   if (status != PROTON_OK) return proton_set_engine_status(status, engine_error);
   g_last_error[0] = '\0';
@@ -2440,13 +2504,13 @@ int32_t proton_window_download_url(
     return proton_set_error(PROTON_ERR_INVALID_ARGUMENT,
                             "non-empty download URL is required");
   }
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "programmatic download requires native engine");
   }
   char engine_error[512] = {0};
   status = proton_engine_window_download_url(
-      slot->engine_window, url, engine_error, sizeof(engine_error));
+      slot->presentation_surface, url, engine_error, sizeof(engine_error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, engine_error);
   }
@@ -2460,13 +2524,13 @@ int32_t proton_window_print(proton_window_handle_t window) {
   if (status != PROTON_OK) {
     return status;
   }
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "printing requires native engine");
   }
   char engine_error[512] = {0};
   status = proton_engine_window_print(
-      slot->engine_window, engine_error, sizeof(engine_error));
+      slot->presentation_surface, engine_error, sizeof(engine_error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, engine_error);
   }
@@ -2494,13 +2558,13 @@ int32_t proton_window_print_to_pdf(
     return proton_set_error(PROTON_ERR_INVALID_ARGUMENT,
                             "PDF path, settings strings, and request output are required");
   }
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "PDF printing requires native engine");
   }
   char engine_error[512] = {0};
   status = proton_engine_window_print_to_pdf(
-      slot->engine_window, path, landscape, print_background, scale,
+      slot->presentation_surface, path, landscape, print_background, scale,
       paper_width, paper_height, prefer_css_page_size, margin_type,
       margin_top, margin_right, margin_bottom, margin_left, page_ranges,
       display_header_footer, header_template, footer_template,
@@ -2526,13 +2590,13 @@ int32_t proton_window_find_in_page(
         PROTON_ERR_INVALID_ARGUMENT,
         "non-empty find text and request output are required");
   }
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "browser find requires native engine");
   }
   char engine_error[512] = {0};
   status = proton_engine_window_find_in_page(
-      slot->engine_window, text, forward, match_case, find_next,
+      slot->presentation_surface, text, forward, match_case, find_next,
       out_request_id, engine_error, sizeof(engine_error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, engine_error);
@@ -2548,13 +2612,13 @@ int32_t proton_window_stop_find_in_page(
   if (status != PROTON_OK) {
     return status;
   }
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "browser find requires native engine");
   }
   char engine_error[512] = {0};
   status = proton_engine_window_stop_find_in_page(
-      slot->engine_window, clear_selection, engine_error,
+      slot->presentation_surface, clear_selection, engine_error,
       sizeof(engine_error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, engine_error);
@@ -2571,13 +2635,13 @@ int32_t proton_window_get_browser_url(proton_window_handle_t window,
   if (status != PROTON_OK) {
     return status;
   }
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "browser state requires native engine");
   }
   char engine_error[512] = {0};
   status = proton_engine_window_get_browser_url(
-      slot->engine_window, buffer, buffer_len, out_required_len, engine_error,
+      slot->presentation_surface, buffer, buffer_len, out_required_len, engine_error,
       sizeof(engine_error));
   return status == PROTON_OK
              ? proton_set_error(PROTON_OK, NULL)
@@ -2592,13 +2656,13 @@ int32_t proton_window_get_browser_title(proton_window_handle_t window,
   if (status != PROTON_OK) {
     return status;
   }
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "browser state requires native engine");
   }
   char engine_error[512] = {0};
   status = proton_engine_window_get_browser_title(
-      slot->engine_window, buffer, buffer_len, out_required_len, engine_error,
+      slot->presentation_surface, buffer, buffer_len, out_required_len, engine_error,
       sizeof(engine_error));
   return status == PROTON_OK
              ? proton_set_error(PROTON_OK, NULL)
@@ -2612,13 +2676,13 @@ int32_t proton_window_get_browser_loading(proton_window_handle_t window,
   if (status != PROTON_OK) {
     return status;
   }
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "browser state requires native engine");
   }
   char engine_error[512] = {0};
   status = proton_engine_window_get_browser_loading(
-      slot->engine_window, out_is_loading, engine_error, sizeof(engine_error));
+      slot->presentation_surface, out_is_loading, engine_error, sizeof(engine_error));
   return status == PROTON_OK
              ? proton_set_error(PROTON_OK, NULL)
              : proton_set_error(status, engine_error);
@@ -2636,13 +2700,13 @@ int32_t proton_window_respond_browser_request(
     return proton_set_error(PROTON_ERR_INVALID_ARGUMENT,
                             "browser response fields are invalid");
   }
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "browser responses require native engine");
   }
   char engine_error[512] = {0};
   status = proton_engine_window_respond_browser_request(
-      slot->engine_window, (uint64_t)request_id, action, path, engine_error,
+      slot->presentation_surface, (uint64_t)request_id, action, path, engine_error,
       sizeof(engine_error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, engine_error);
@@ -2658,10 +2722,10 @@ int32_t proton_window_emit_bridge_event_json(proton_window_handle_t window,
   if (status != PROTON_OK) {
     return status;
   }
-  if (slot->engine_window != NULL) {
+  if (slot->presentation_surface != NULL) {
     char engine_error[512] = {0};
     status = proton_engine_window_emit_bridge_event_json(
-        slot->engine_window, event_json, engine_error, sizeof(engine_error));
+        slot->presentation_surface, event_json, engine_error, sizeof(engine_error));
     if (status != PROTON_OK) {
       return proton_set_engine_status(status, engine_error);
     }
@@ -2677,7 +2741,7 @@ static int32_t proton_require_dialog_window(proton_window_handle_t window,
   if (status != PROTON_OK) {
     return status;
   }
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "native dialog requires native engine window");
   }
@@ -2747,12 +2811,12 @@ static int32_t proton_window_bridge_text_field(
   if (status != PROTON_OK) {
     return status;
   }
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "bridge lifecycle requires native engine");
   }
   char engine_error[512] = {0};
-  status = query(slot->engine_window, field, buffer, buffer_len,
+  status = query(slot->presentation_surface, field, buffer, buffer_len,
                  out_required_len, engine_error, sizeof(engine_error));
   if (status < 0) {
     return proton_set_engine_status(status, engine_error);
@@ -2776,18 +2840,18 @@ int32_t proton_window_bridge_revision(proton_window_handle_t window,
   *out_available = 0;
   *out_revision = 0;
   if (slot->lifecycle != PROTON_WINDOW_LIVE ||
-      (slot->engine_window != NULL &&
-       proton_engine_window_is_closed(slot->engine_window))) {
+      (slot->presentation_surface != NULL &&
+       proton_engine_window_is_closed(slot->presentation_surface))) {
     g_last_error[0] = '\0';
     return PROTON_OK;
   }
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "bridge lifecycle requires native engine");
   }
   *out_available = 1;
   *out_revision = (int64_t)proton_engine_window_bridge_revision(
-      slot->engine_window);
+      slot->presentation_surface);
   g_last_error[0] = '\0';
   return PROTON_OK;
 }
@@ -2821,12 +2885,12 @@ static int32_t proton_window_bridge_failure_query(
   if (status != PROTON_OK) {
     return status;
   }
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "bridge lifecycle requires native engine");
   }
   char engine_error[512] = {0};
-  status = query(slot->engine_window, out_value, engine_error,
+  status = query(slot->presentation_surface, out_value, engine_error,
                  sizeof(engine_error));
   if (status < 0) {
     return proton_set_engine_status(status, engine_error);
@@ -2853,13 +2917,13 @@ int32_t proton_window_bridge_failure_int_field(
   if (status != PROTON_OK) {
     return status;
   }
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "bridge lifecycle requires native engine");
   }
   char engine_error[512] = {0};
   status = proton_engine_window_bridge_failure_int_field(
-      slot->engine_window, field, out_value, out_present, engine_error,
+      slot->presentation_surface, field, out_value, out_present, engine_error,
       sizeof(engine_error));
   if (status < 0) {
     return proton_set_engine_status(status, engine_error);
@@ -2874,13 +2938,13 @@ int32_t proton_window_clear_bridge_failure(proton_window_handle_t window) {
   if (status != PROTON_OK) {
     return status;
   }
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "bridge lifecycle requires native engine");
   }
   char engine_error[512] = {0};
   status = proton_engine_window_clear_bridge_failure(
-      slot->engine_window, engine_error, sizeof(engine_error));
+      slot->presentation_surface, engine_error, sizeof(engine_error));
   if (status < 0) {
     return proton_set_engine_status(status, engine_error);
   }
@@ -2906,13 +2970,13 @@ int32_t proton_runtime_begin_message_dialog(
   if (status != PROTON_OK) {
     return status;
   }
-  if (slot->engine_runtime == NULL) {
+  if (slot->presentation_runtime == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "runtime dialog requires native engine");
   }
   char engine_error[512] = {0};
   status = proton_engine_runtime_begin_message_dialog(
-      slot->engine_runtime, title_utf8, title_len, message_utf8, message_len,
+      slot->presentation_runtime, title_utf8, title_len, message_utf8, message_len,
       level, out_dialog, engine_error, sizeof(engine_error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, engine_error);
@@ -3127,7 +3191,7 @@ int32_t proton_window_begin_message_dialog(
   }
   char engine_error[512] = {0};
   status = proton_engine_window_begin_message_dialog(
-      slot->engine_window, title_utf8, title_len, message_utf8,
+      slot->presentation_surface, title_utf8, title_len, message_utf8,
       message_len, level, out_dialog, engine_error, sizeof(engine_error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, engine_error);
@@ -3160,7 +3224,7 @@ int32_t proton_window_begin_confirm_dialog(
   }
   char engine_error[512] = {0};
   status = proton_engine_window_begin_confirm_dialog(
-      slot->engine_window, title_utf8, title_len, message_utf8,
+      slot->presentation_surface, title_utf8, title_len, message_utf8,
       message_len, level, out_dialog, engine_error, sizeof(engine_error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, engine_error);
@@ -3195,7 +3259,7 @@ int32_t proton_window_begin_open_file_dialog(
   }
   char engine_error[512] = {0};
   status = proton_engine_window_begin_open_file_dialog(
-      slot->engine_window, title_utf8, title_len, path_utf8, path_len,
+      slot->presentation_surface, title_utf8, title_len, path_utf8, path_len,
       out_dialog, engine_error, sizeof(engine_error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, engine_error);
@@ -3230,7 +3294,7 @@ int32_t proton_window_begin_save_file_dialog(
   }
   char engine_error[512] = {0};
   status = proton_engine_window_begin_save_file_dialog(
-      slot->engine_window, title_utf8, title_len, path_utf8, path_len,
+      slot->presentation_surface, title_utf8, title_len, path_utf8, path_len,
       out_dialog, engine_error, sizeof(engine_error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, engine_error);
@@ -3265,7 +3329,7 @@ int32_t proton_window_begin_choose_directory_dialog(
   }
   char engine_error[512] = {0};
   status = proton_engine_window_begin_choose_directory_dialog(
-      slot->engine_window, title_utf8, title_len, path_utf8, path_len,
+      slot->presentation_surface, title_utf8, title_len, path_utf8, path_len,
       out_dialog, engine_error, sizeof(engine_error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, engine_error);
@@ -3287,7 +3351,7 @@ int32_t proton_window_cancel_dialog(proton_window_handle_t window,
   }
   char engine_error[512] = {0};
   status = proton_engine_window_cancel_dialog(
-      slot->engine_window, dialog, engine_error, sizeof(engine_error));
+      slot->presentation_surface, dialog, engine_error, sizeof(engine_error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, engine_error);
   }
@@ -3309,13 +3373,13 @@ int32_t proton_window_cookie_begin_get(proton_window_handle_t window,
   if (status != PROTON_OK) {
     return status;
   }
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "cookie operations require native engine");
   }
   char engine_error[512] = {0};
   status = proton_engine_window_cookie_begin_get(
-      slot->engine_window, url_utf8, include_http_only, out_request_id,
+      slot->presentation_surface, url_utf8, include_http_only, out_request_id,
       engine_error, sizeof(engine_error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, engine_error);
@@ -3345,13 +3409,13 @@ int32_t proton_window_cookie_set(
     return proton_set_error(PROTON_ERR_INVALID_ARGUMENT,
                             "invalid cookie flags");
   }
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "cookie operations require native engine");
   }
   char engine_error[512] = {0};
   status = proton_engine_window_cookie_set(
-      slot->engine_window, url_utf8, name_utf8, value_utf8, domain_utf8,
+      slot->presentation_surface, url_utf8, name_utf8, value_utf8, domain_utf8,
       path_utf8, secure, http_only, same_site, engine_error,
       sizeof(engine_error));
   if (status != PROTON_OK) {
@@ -3369,12 +3433,12 @@ int32_t proton_window_cookie_delete(proton_window_handle_t window,
   if (status != PROTON_OK) {
     return status;
   }
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "cookie operations require native engine");
   }
   char engine_error[512] = {0};
-  status = proton_engine_window_cookie_delete(slot->engine_window, url_utf8,
+  status = proton_engine_window_cookie_delete(slot->presentation_surface, url_utf8,
                                               name_utf8, engine_error,
                                               sizeof(engine_error));
   if (status != PROTON_OK) {
@@ -3390,12 +3454,12 @@ int32_t proton_window_cookie_flush(proton_window_handle_t window) {
   if (status != PROTON_OK) {
     return status;
   }
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "cookie operations require native engine");
   }
   char engine_error[512] = {0};
-  status = proton_engine_window_cookie_flush(slot->engine_window, engine_error,
+  status = proton_engine_window_cookie_flush(slot->presentation_surface, engine_error,
                                              sizeof(engine_error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, engine_error);
@@ -3410,12 +3474,12 @@ int32_t proton_window_clear_cache(proton_window_handle_t window) {
   if (status != PROTON_OK) {
     return status;
   }
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "cache operations require native engine");
   }
   char engine_error[512] = {0};
-  status = proton_engine_window_clear_cache(slot->engine_window, engine_error,
+  status = proton_engine_window_clear_cache(slot->presentation_surface, engine_error,
                                             sizeof(engine_error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, engine_error);
@@ -3428,11 +3492,11 @@ int32_t proton_window_clear_auth_cache(proton_window_handle_t window) {
   proton_window_slot_t *slot = NULL;
   int32_t status = proton_get_window(window, &slot);
   if (status != PROTON_OK) return status;
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED, "auth cache requires native engine");
   }
   char engine_error[512] = {0};
-  status = proton_engine_window_clear_auth_cache(slot->engine_window, engine_error,
+  status = proton_engine_window_clear_auth_cache(slot->presentation_surface, engine_error,
                                                   sizeof(engine_error));
   if (status != PROTON_OK) return proton_set_engine_status(status, engine_error);
   g_last_error[0] = '\0';
@@ -3443,13 +3507,13 @@ int32_t proton_window_clear_certificate_exceptions(proton_window_handle_t window
   proton_window_slot_t *slot = NULL;
   int32_t status = proton_get_window(window, &slot);
   if (status != PROTON_OK) return status;
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "certificate exceptions require native engine");
   }
   char engine_error[512] = {0};
   status = proton_engine_window_clear_certificate_exceptions(
-      slot->engine_window, engine_error, sizeof(engine_error));
+      slot->presentation_surface, engine_error, sizeof(engine_error));
   if (status != PROTON_OK) return proton_set_engine_status(status, engine_error);
   g_last_error[0] = '\0';
   return PROTON_OK;
@@ -3459,13 +3523,13 @@ int32_t proton_window_close_all_connections(proton_window_handle_t window) {
   proton_window_slot_t *slot = NULL;
   int32_t status = proton_get_window(window, &slot);
   if (status != PROTON_OK) return status;
-  if (slot->engine_window == NULL) {
+  if (slot->presentation_surface == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
                             "connection operations require native engine");
   }
   char engine_error[512] = {0};
   status = proton_engine_window_close_all_connections(
-      slot->engine_window, engine_error, sizeof(engine_error));
+      slot->presentation_surface, engine_error, sizeof(engine_error));
   if (status != PROTON_OK) return proton_set_engine_status(status, engine_error);
   g_last_error[0] = '\0';
   return PROTON_OK;
@@ -3503,10 +3567,10 @@ int32_t proton_internal_view_create(
   config.public_view = logical_id;
 
   proton_engine_view_t *engine_view = NULL;
-  if (window_slot->engine_window != NULL) {
+  if (window_slot->presentation_surface != NULL) {
     char engine_error[512] = {0};
     status = proton_engine_view_create(
-        window_slot->engine_window, &config, &engine_view, engine_error,
+        window_slot->presentation_surface, &config, &engine_view, engine_error,
         sizeof(engine_error));
     if (status != PROTON_OK) {
       return proton_set_engine_status(status, engine_error);

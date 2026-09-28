@@ -235,6 +235,24 @@ pub extern "C" fn execute_process(
 ) -> Int = "proton_internal_execute_process"
 
 ///|
+#borrow(out_runtime)
+pub extern "C" fn platform_runtime_create(
+  out_runtime : Ref[RuntimeHandle],
+) -> Int = "proton_internal_platform_runtime_create"
+
+///|
+#borrow(runtime_root, helper_path, resources_dir, locales_dir, cache_dir, locale, accept_languages, proxy_server, proxy_bypass, dialog_ok_label, dialog_cancel_label)
+pub extern "C" fn cef_runtime_attach(
+  platform : RuntimeHandle,
+  use_bundled : Int, runtime_root : Bytes, helper_path : Bytes,
+  resources_dir : Bytes, locales_dir : Bytes, cache_dir : Bytes,
+  locale : Bytes, accept_languages : Bytes, proxy_server : Bytes,
+  proxy_bypass : Bytes, dialog_ok_label : Bytes, dialog_cancel_label : Bytes,
+  remote_debugging_port : Int, headless : Int, accessibility_mode : Int,
+  persist_session_cookies : Int,
+) -> Int = "proton_internal_cef_runtime_attach"
+
+///|
 #borrow(runtime_root, helper_path, resources_dir, locales_dir, cache_dir, locale, accept_languages, proxy_server, proxy_bypass, dialog_ok_label, dialog_cancel_label, out_runtime)
 pub extern "C" fn runtime_create(
   use_bundled : Int,
@@ -525,6 +543,27 @@ pub extern "C" fn proton_system_accessibility_client_trusted_ffi(
   prompt : Int,
   out_trusted : Ref[Int],
 ) -> Int = "proton_system_accessibility_client_trusted"
+
+///|
+#borrow(out_window)
+pub extern "C" fn platform_window_create(
+  runtime : RuntimeHandle, width : Int, height : Int,
+  out_window : Ref[WindowHandle],
+) -> Int = "proton_internal_platform_window_create"
+
+///|
+#borrow(title, initial_url, titlebar_minimize_label, titlebar_maximize_label, titlebar_restore_label, titlebar_close_label, bridge_config, web_request_config)
+pub extern "C" fn cef_surface_attach(
+  window : WindowHandle, title : Bytes, width : Int, height : Int,
+  initial_url : Bytes, size_hint : Int, titlebar_overlay : Int,
+  theme_preference : Int, button_position_custom : Int,
+  button_position_x : Int, button_position_y : Int, navigation_policy : Int,
+  titlebar_minimize_label : Bytes, titlebar_maximize_label : Bytes,
+  titlebar_restore_label : Bytes, titlebar_close_label : Bytes,
+  new_window_policy : Int, download_policy : Int, certificate_policy : Int,
+  media_policy : Int, devtools : Int, bridge_config : BridgeConfigHandle,
+  web_request_config : WebRequestConfigHandle,
+) -> Int = "proton_internal_cef_surface_attach"
 
 ///|
 #borrow(title, initial_url, titlebar_minimize_label, titlebar_maximize_label, titlebar_restore_label, titlebar_close_label, bridge_config, web_request_config, out_window)

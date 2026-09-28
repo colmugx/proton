@@ -75,8 +75,8 @@ static volatile LONG64 g_proton_engine_scheduled_pump_delay_ms = -1;
 /* Set only while this process is inside cef_do_message_loop_work. */
 static volatile LONG g_proton_engine_message_pump_active = 0;
 static HANDLE g_proton_engine_pump_event = NULL;
-/* Main-thread only, so a plain bool: set by proton_engine_host_loop_begin and
-   cleared by proton_engine_host_loop_end. */
+/* Main-thread only, so a plain bool: set by proton_engine_platform_host_loop_begin and
+   cleared by proton_engine_platform_host_loop_end. */
 static bool g_proton_engine_host_loop_active = false;
 
 /* The pump event belongs to the host loop once one is running. It is created
@@ -660,7 +660,7 @@ int32_t proton_engine_runtime_do_message_loop_work(
   return PROTON_OK;
 }
 
-int32_t proton_engine_host_loop_begin(char *error, size_t error_len) {
+int32_t proton_engine_platform_host_loop_begin(char *error, size_t error_len) {
   /* The pump event is process-wide and needs no CEF, so the host loop can own
      it before the first runtime exists. Manual-reset on purpose: a wakeup
      delivered while nothing is waiting must leave the next wait returning
@@ -677,7 +677,7 @@ int32_t proton_engine_host_loop_begin(char *error, size_t error_len) {
   return PROTON_OK;
 }
 
-int32_t proton_engine_host_loop_poll(int32_t timeout_ms,
+int32_t proton_engine_platform_host_loop_poll(int32_t timeout_ms,
                                      uint32_t *out_ready_mask,
                                      char *error,
                                      size_t error_len) {
@@ -699,15 +699,23 @@ int32_t proton_engine_host_loop_poll(int32_t timeout_ms,
     TranslateMessage(&msg);
     DispatchMessageW(&msg);
   }
-  if (g_proton_cef_initialized &&
-      !g_proton_engine_multi_threaded_message_loop) {
-    cef_do_message_loop_work();
-  }
   InterlockedExchange(&g_proton_engine_message_pump_active, 0);
   return PROTON_OK;
 }
 
-void proton_engine_host_loop_end(void) {
+int32_t proton_engine_presentation_poll(char *error, size_t error_len) {
+  (void)error;
+  (void)error_len;
+  if (g_proton_cef_initialized &&
+      !g_proton_engine_multi_threaded_message_loop) {
+    InterlockedExchange(&g_proton_engine_message_pump_active, 1);
+    cef_do_message_loop_work();
+    InterlockedExchange(&g_proton_engine_message_pump_active, 0);
+  }
+  return PROTON_OK;
+}
+
+void proton_engine_platform_host_loop_end(void) {
   g_proton_engine_host_loop_active = false;
   proton_engine_release_pump_event();
 }

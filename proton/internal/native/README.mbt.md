@@ -14,15 +14,24 @@ system operations. The `presentation` package defines the process, runtime,
 and window-surface boundary, while `presentation/cef` supplies the sole
 default driver.
 
-The C ABI still uses shared runtime and window handles, and the native build
-still links CEF unconditionally. Those constraints preserve existing behavior
-for this first ownership split; they do not make CEF part of the platform
-contract. A presentation owns subprocess dispatch, presentation runtime
-startup and teardown, and content-surface attachment and destruction.
+The C ABI creates platform runtime and window slots first, then explicitly
+attaches CEF presentation state. Platform slots own logical identity, owner
+thread, application/window lifecycle, and event queues. Their
+`presentation_runtime` and `presentation_surface` fields are nullable backend
+attachments, not aliases for the slots themselves. Destruction reverses that
+order: detach the CEF surface/runtime, then release the platform window/runtime.
+
+CEF is still linked unconditionally. That preserves the current product and
+build behavior, but CEF configuration lives only in `presentation/cef`; the
+generic presentation contract contains lifecycle closures and no native
+handles, URLs, navigation, cookies, bridge, web-request, or DevTools fields.
 
 Platform services must not initialize CEF directly. New browser or renderer
 startup work belongs in the CEF presentation implementation; host-loop,
-application, and operating-system work remains in the platform path.
+application, and operating-system work remains in the platform path. Each host
+poll first advances the platform adapter and then invokes the presentation
+pump contribution, preserving the existing scheduling behavior without making
+the host loop itself a CEF lifecycle owner.
 
 ```mbt check
 ///|

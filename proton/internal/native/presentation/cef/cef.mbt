@@ -6,8 +6,54 @@ fn ensure_linked() -> Unit {
 }
 
 ///|
-fn execute_process(
-  config : @presentation.RuntimeConfig,
+pub(all) struct RuntimeConfig {
+  use_bundled : Int
+  runtime_root : Bytes
+  helper_path : Bytes
+  resources_dir : Bytes
+  locales_dir : Bytes
+  cache_dir : Bytes
+  locale : Bytes
+  accept_languages : Bytes
+  proxy_server : Bytes
+  proxy_bypass : Bytes
+  dialog_ok_label : Bytes
+  dialog_cancel_label : Bytes
+  remote_debugging_port : Int
+  headless : Int
+  accessibility_mode : Int
+  persist_session_cookies : Int
+}
+
+///|
+pub(all) struct SurfaceConfig {
+  title : Bytes
+  width : Int
+  height : Int
+  initial_url : Bytes
+  size_hint : Int
+  titlebar_overlay : Int
+  theme_preference : Int
+  button_position_custom : Int
+  button_position_x : Int
+  button_position_y : Int
+  navigation_policy : Int
+  titlebar_minimize_label : Bytes
+  titlebar_maximize_label : Bytes
+  titlebar_restore_label : Bytes
+  titlebar_close_label : Bytes
+  new_window_policy : Int
+  download_policy : Int
+  certificate_policy : Int
+  media_policy : Int
+  devtools : Int
+  bridge_config : @native_ffi.BridgeConfigHandle
+  web_request_config : @native_ffi.WebRequestConfigHandle
+}
+
+///|
+pub fn execute_process(
+  config : RuntimeConfig,
   out_exit_code : Ref[Int],
 ) -> Int {
   ensure_linked()
@@ -30,13 +76,14 @@ fn execute_process(
 }
 
 ///|
-fn create(
-  config : @presentation.RuntimeConfig,
+pub fn attach_runtime(
+  platform : @native_ffi.RuntimeHandle,
+  config : RuntimeConfig,
   out_status : Ref[Int],
 ) -> @presentation.Runtime {
   ensure_linked()
-  let out_runtime = Ref(@native_ffi.runtime_null())
-  out_status.val = @native_ffi.runtime_create(
+  out_status.val = @native_ffi.cef_runtime_attach(
+    platform,
     config.use_bundled,
     config.runtime_root,
     config.helper_path,
@@ -53,11 +100,9 @@ fn create(
     config.headless,
     config.accessibility_mode,
     config.persist_session_cookies,
-    out_runtime,
   )
-  let handle = out_runtime.val
+  let handle = platform
   @presentation.Runtime::{
-    handle,
     begin_destroy: fn() {
       @native_ffi.proton_runtime_begin_destroy_ffi(handle)
     },
@@ -67,21 +112,17 @@ fn create(
     finish_destroy: fn() {
       @native_ffi.proton_runtime_finish_destroy_ffi(handle)
     },
-    create_surface: fn(config, out_status) {
-      create_surface(handle, config, out_status)
-    },
   }
 }
 
 ///|
-fn create_surface(
-  runtime : @native_ffi.RuntimeHandle,
-  config : @presentation.SurfaceConfig,
+pub fn attach_surface(
+  platform : @native_ffi.WindowHandle,
+  config : SurfaceConfig,
   out_status : Ref[Int],
 ) -> @presentation.Surface {
-  let out_window = Ref(@native_ffi.window_null())
-  out_status.val = @native_ffi.window_create(
-    runtime,
+  out_status.val = @native_ffi.cef_surface_attach(
+    platform,
     config.title,
     config.width,
     config.height,
@@ -104,16 +145,8 @@ fn create_surface(
     config.devtools,
     config.bridge_config,
     config.web_request_config,
-    out_window,
   )
-  let handle = out_window.val
   @presentation.Surface::{
-    handle,
-    destroy: fn() { @native_ffi.proton_window_destroy_ffi(handle) },
+    destroy: fn() { @native_ffi.proton_window_destroy_ffi(platform) },
   }
-}
-
-///|
-pub fn driver() -> @presentation.Driver {
-  @presentation.Driver::{ execute_process, create, }
 }

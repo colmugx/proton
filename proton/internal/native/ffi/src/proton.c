@@ -851,6 +851,8 @@ int32_t proton_internal_cef_surface_attach(
     }
   }
   platform_window->presentation_surface = engine_window;
+  proton_platform_window_attach_backend(platform_window->platform_window,
+                                        engine_window);
   g_last_error[0] = '\0';
   return PROTON_OK;
 }
@@ -914,6 +916,7 @@ int32_t proton_window_destroy(proton_window_handle_t window) {
       return proton_set_engine_status(status, engine_error);
     }
     slot->presentation_surface = NULL;
+    proton_platform_window_attach_backend(slot->platform_window, NULL);
   }
   status = proton_window_enqueue_closed_once(runtime, slot);
   if (status != PROTON_OK) {

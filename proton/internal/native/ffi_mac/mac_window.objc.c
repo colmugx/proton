@@ -1676,14 +1676,14 @@ int32_t proton_engine_window_set_parent(proton_engine_window_t *window,
     NSWindow *child_parent = native.parentWindow;
     if (child_parent != nil) [child_parent removeChildWindow:native];
     if (parent == NULL) return PROTON_OK;
-    if (parent->window == nil) {
+    if (proton_engine_window_native_window(parent) == nil) {
       proton_engine_set_message(error, error_len, "parent window is not initialized");
       return PROTON_ERR_INVALID_HANDLE;
     }
     if (modal) {
-      [parent->window beginSheet:native completionHandler:nil];
+      [proton_engine_window_native_window(parent) beginSheet:native completionHandler:nil];
     } else {
-      [parent->window addChildWindow:native ordered:NSWindowAbove];
+      [proton_engine_window_native_window(parent) addChildWindow:native ordered:NSWindowAbove];
     }
     return PROTON_OK;
   }

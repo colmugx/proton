@@ -32,6 +32,8 @@ PROTON_INTERNAL proton_platform_window_t *proton_platform_window_alloc(void);
 PROTON_INTERNAL int32_t proton_platform_window_materialize(
     proton_platform_window_t *window, proton_engine_runtime_t *runtime,
     proton_window_id_t public_window, char *error, size_t error_len);
+PROTON_INTERNAL int32_t proton_platform_window_destroy_shell(
+    proton_platform_window_t *window, char *error, size_t error_len);
 
 PROTON_INTERNAL int32_t proton_platform_window_configure(
     proton_platform_window_t *window, const char *title, int32_t width,

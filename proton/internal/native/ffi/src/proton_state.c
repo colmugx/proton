@@ -437,7 +437,6 @@ int32_t proton_destroy_windows_for_runtime(proton_runtime_slot_t *runtime) {
         return proton_set_engine_status(status, engine_error);
       }
       window->presentation_surface = NULL;
-      proton_platform_window_attach_backend(window->platform_window, NULL);
     } else {
       char engine_error[512] = {0};
       int32_t status = proton_platform_window_destroy_shell(

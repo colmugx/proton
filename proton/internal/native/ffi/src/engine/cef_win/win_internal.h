@@ -118,6 +118,7 @@ struct proton_engine_window {
   uint64_t close_request_id;
   proton_browser_session_t *browser_session;
   int destroy_requested;
+  int detach_presentation_requested;
   int closed;
   struct proton_engine_view *views;
   int finalize_queued;

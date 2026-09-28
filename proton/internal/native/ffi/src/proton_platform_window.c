@@ -88,15 +88,17 @@ int32_t proton_platform_window_destroy_shell(
   if (window == NULL || window->backend == NULL) {
     return PROTON_OK;
   }
-  int32_t status =
-      proton_engine_window_destroy(window->backend, error, error_len);
-  if (status == PROTON_OK) {
-    window->backend = NULL;
-  }
-  return status;
+  return proton_engine_window_destroy(window->backend, error, error_len);
 }
 
 void proton_platform_window_free(proton_platform_window_t *window) {
+  if (window == NULL) {
+    return;
+  }
+  if (window->backend != NULL) {
+    window->release_pending = 1;
+    return;
+  }
   free(window);
 }
 
@@ -104,6 +106,18 @@ void proton_platform_window_attach_backend(proton_platform_window_t *window,
                                            proton_engine_window_t *backend) {
   if (window != NULL) {
     window->backend = backend;
+  }
+}
+
+void proton_platform_window_backend_finalized(
+    proton_platform_window_t *window, proton_engine_window_t *backend) {
+  if (window == NULL || window->backend != backend) {
+    return;
+  }
+  window->backend = NULL;
+  window->native_window = NULL;
+  if (window->release_pending) {
+    free(window);
   }
 }
 

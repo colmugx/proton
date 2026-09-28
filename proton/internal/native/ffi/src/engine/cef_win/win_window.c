@@ -64,19 +64,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-static HWND proton_engine_window_hwnd(const proton_engine_window_t *window) {
-  return window != NULL && window->platform != NULL
-             ? (HWND)window->platform->native_window
-             : NULL;
-}
-
-static void proton_engine_window_set_hwnd(proton_engine_window_t *window,
-                                          HWND hwnd) {
-  if (window != NULL && window->platform != NULL) {
-    window->platform->native_window = (void *)hwnd;
-  }
-}
-
 int proton_engine_browser_hwnd_is_focused(HWND browser_hwnd) {
   const HWND focused = GetFocus();
   return browser_hwnd != NULL && focused != NULL &&
@@ -1665,7 +1652,7 @@ int32_t proton_engine_window_set_parent(proton_engine_window_t *window,
       IsWindow(window->parent_hwnd)) {
     EnableWindow(window->parent_hwnd, TRUE);
   }
-  HWND parent_hwnd = parent != NULL ? parent->hwnd : NULL;
+  HWND parent_hwnd = parent != NULL ? proton_engine_window_hwnd(parent) : NULL;
   SetLastError(0);
   if (SetWindowLongPtrW(proton_engine_window_hwnd(window), GWLP_HWNDPARENT,
                         (LONG_PTR)parent_hwnd) == 0 &&

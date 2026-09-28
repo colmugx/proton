@@ -329,6 +329,12 @@ static void CEF_CALLBACK proton_engine_on_before_close(
   proton_browser_lifecycle_on_before_close(lifecycle, browser);
   if (window != NULL) {
     proton_engine_window_close_views(window);
+    if (window->detach_presentation_requested &&
+        !window->destroy_requested) {
+      proton_engine_window_finalize_if_ready(window);
+      proton_engine_signal_wait_source(PROTON_WAIT_PLATFORM);
+      return;
+    }
     proton_engine_window_mark_closed(window);
     if (window->window != nil && !window->appkit_closing) {
       [window->window close];
@@ -376,6 +382,14 @@ static int CEF_CALLBACK proton_engine_do_close(cef_life_span_handler_t *self,
   }
   proton_engine_window_t *window =
       (proton_engine_window_t *)proton_browser_lifecycle_owner(lifecycle);
+  if (window != NULL && window->detach_presentation_requested &&
+      !window->destroy_requested) {
+    if (window->browser_view != nil) {
+      [window->browser_view removeFromSuperview];
+      window->browser_view = nil;
+    }
+    return 1;
+  }
   if (window != NULL) {
     window->cef_allows_appkit_close = 1;
   }

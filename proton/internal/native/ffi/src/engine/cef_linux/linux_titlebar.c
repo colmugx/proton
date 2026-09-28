@@ -130,11 +130,11 @@ proton_linux_titlebar_hit_t proton_linux_titlebar_hit_test(
 }
 
 static int proton_engine_window_is_maximized(proton_engine_window_t *window) {
-  if (window == NULL || window->window == NULL ||
-      gtk_widget_get_window(window->window) == NULL) {
+  if (window == NULL || proton_engine_window_native_widget(window) == NULL ||
+      gtk_widget_get_window(proton_engine_window_native_widget(window)) == NULL) {
     return 0;
   }
-  return (gdk_window_get_state(gtk_widget_get_window(window->window)) &
+  return (gdk_window_get_state(gtk_widget_get_window(proton_engine_window_native_widget(window))) &
           GDK_WINDOW_STATE_MAXIMIZED) != 0;
 }
 
@@ -158,13 +158,13 @@ void proton_engine_overlay_update_maximize_button(
 
 void proton_engine_overlay_toggle_maximize(
     proton_engine_window_t *window) {
-  if (window == NULL || window->window == NULL) {
+  if (window == NULL || proton_engine_window_native_widget(window) == NULL) {
     return;
   }
   if (proton_engine_window_is_maximized(window)) {
-    gtk_window_unmaximize(GTK_WINDOW(window->window));
+    gtk_window_unmaximize(GTK_WINDOW(proton_engine_window_native_widget(window)));
   } else {
-    gtk_window_maximize(GTK_WINDOW(window->window));
+    gtk_window_maximize(GTK_WINDOW(proton_engine_window_native_widget(window)));
   }
 }
 
@@ -172,8 +172,8 @@ static void proton_engine_overlay_minimize(GtkButton *button,
                                            gpointer user_data) {
   (void)button;
   proton_engine_window_t *window = (proton_engine_window_t *)user_data;
-  if (window != NULL && window->window != NULL) {
-    gtk_window_iconify(GTK_WINDOW(window->window));
+  if (window != NULL && proton_engine_window_native_widget(window) != NULL) {
+    gtk_window_iconify(GTK_WINDOW(proton_engine_window_native_widget(window)));
   }
 }
 
@@ -188,8 +188,8 @@ static void proton_engine_overlay_close(GtkButton *button,
                                         gpointer user_data) {
   (void)button;
   proton_engine_window_t *window = (proton_engine_window_t *)user_data;
-  if (window != NULL && window->window != NULL) {
-    gtk_window_close(GTK_WINDOW(window->window));
+  if (window != NULL && proton_engine_window_native_widget(window) != NULL) {
+    gtk_window_close(GTK_WINDOW(proton_engine_window_native_widget(window)));
   }
 }
 
@@ -209,11 +209,11 @@ gboolean proton_engine_overlay_window_state(
 
 int proton_engine_overlay_resize_handle(
     proton_engine_window_t *window) {
-  if (window == NULL || window->window == NULL) {
+  if (window == NULL || proton_engine_window_native_widget(window) == NULL) {
     return 0;
   }
   int themed_handle = 0;
-  gtk_widget_style_get(window->window, "decoration-resize-handle",
+  gtk_widget_style_get(proton_engine_window_native_widget(window), "decoration-resize-handle",
                        &themed_handle, NULL);
   return themed_handle > 1 ? (themed_handle + 1) / 2 : themed_handle;
 }
@@ -251,7 +251,7 @@ static void proton_engine_overlay_region_subtract(
 void proton_engine_overlay_update_input_shape(
     proton_engine_window_t *window) {
   if (window == NULL || !window->titlebar_overlay ||
-      window->window == NULL || window->browser_host == NULL) {
+      proton_engine_window_native_widget(window) == NULL || window->browser_host == NULL) {
     return;
   }
   const int width = gtk_widget_get_allocated_width(window->browser_host);
@@ -345,7 +345,7 @@ void proton_engine_overlay_update_input_shape(
 
   cairo_rectangle_int_t bounds = {0, 0, width, height};
   cairo_region_intersect_rectangle(region, &bounds);
-  GdkWindow *top_gdk_window = gtk_widget_get_window(window->window);
+  GdkWindow *top_gdk_window = gtk_widget_get_window(proton_engine_window_native_widget(window));
   if (top_gdk_window == NULL || !GDK_IS_X11_WINDOW(top_gdk_window)) {
     cairo_region_destroy(region);
     return;
@@ -470,7 +470,7 @@ int proton_engine_overlay_create_controls(
   gtk_container_add(GTK_CONTAINER(event_box), box);
   gtk_event_box_set_visible_window(GTK_EVENT_BOX(event_box), TRUE);
   gtk_widget_set_app_paintable(event_box, TRUE);
-  GdkScreen *screen = gtk_widget_get_screen(window->window);
+  GdkScreen *screen = gtk_widget_get_screen(proton_engine_window_native_widget(window));
   GdkVisual *rgba_visual =
       screen != NULL ? gdk_screen_get_rgba_visual(screen) : NULL;
   if (rgba_visual != NULL) {
@@ -581,11 +581,11 @@ static void proton_engine_overlay_begin_moveresize(
     proton_engine_window_t *window,
     const XButtonEvent *event,
     int direction) {
-  if (window == NULL || window->window == NULL || event == NULL ||
+  if (window == NULL || proton_engine_window_native_widget(window) == NULL || event == NULL ||
       event->display == NULL) {
     return;
   }
-  GdkWindow *top_gdk_window = gtk_widget_get_window(window->window);
+  GdkWindow *top_gdk_window = gtk_widget_get_window(proton_engine_window_native_widget(window));
   if (top_gdk_window == NULL) {
     return;
   }
@@ -728,10 +728,10 @@ GdkFilterReturn proton_engine_x11_event_filter(GdkXEvent *xevent,
   for (proton_engine_window_t *window = proton_engine_windows_head();
        window != NULL;
        window = window->next) {
-    if (!window->titlebar_overlay || window->window == NULL) {
+    if (!window->titlebar_overlay || proton_engine_window_native_widget(window) == NULL) {
       continue;
     }
-    GdkWindow *top_gdk_window = gtk_widget_get_window(window->window);
+    GdkWindow *top_gdk_window = gtk_widget_get_window(proton_engine_window_native_widget(window));
     if (top_gdk_window == NULL ||
         !proton_engine_x11_window_is_descendant(
             display, native_event->xbutton.window,

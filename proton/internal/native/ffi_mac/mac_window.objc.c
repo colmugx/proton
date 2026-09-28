@@ -471,7 +471,7 @@ static void proton_engine_window_commit_appkit_close(
   }
   NSView *browser_view = window->browser_view;
   proton_engine_window_set_native_window(window, nil);
-  window->content_view = nil;
+  proton_engine_window_set_content_view(window, nil);
   proton_engine_signal_wait_source(PROTON_WAIT_PLATFORM);
 
   // A windowed CEF browser completes close only after CefBrowserHostView is
@@ -525,11 +525,11 @@ proton_engine_window_titlebar_area(
                                                      : 100,
   };
   if (window == NULL || !window->titlebar_overlay || proton_engine_window_native_window(window) == nil ||
-      window->content_view == nil ||
+      proton_engine_window_content_view(window) == nil ||
       (proton_engine_window_native_window(window).styleMask & NSWindowStyleMaskFullScreen) != 0) {
     return area;
   }
-  NSRect content_bounds = window->content_view.bounds;
+  NSRect content_bounds = proton_engine_window_content_view(window).bounds;
   if (NSWidth(content_bounds) <= 0.0 || NSHeight(content_bounds) <= 0.0) {
     return area;
   }
@@ -544,7 +544,7 @@ proton_engine_window_titlebar_area(
     if (button == nil || button.superview == nil) {
       continue;
     }
-    NSRect rect = [window->content_view convertRect:button.bounds
+    NSRect rect = [proton_engine_window_content_view(window) convertRect:button.bounds
                                            fromView:button];
     if (NSWidth(rect) <= 0.0 || NSHeight(rect) <= 0.0) {
       continue;
@@ -648,7 +648,7 @@ int32_t proton_engine_window_get_titlebar_area(
   proton_engine_window_t *owner =
       button_owner != NULL ? button_owner->backend : NULL;
   if (laying_out_buttons || owner == NULL || !owner->titlebar_overlay ||
-      owner->content_view == nil || (self.styleMask & NSWindowStyleMaskFullScreen)) {
+      proton_engine_window_content_view(owner) == nil || (self.styleMask & NSWindowStyleMaskFullScreen)) {
     return;
   }
   if (!owner->button_position_custom && !saved_button_layout) {
@@ -695,11 +695,11 @@ int32_t proton_engine_window_get_titlebar_area(
   for (int i = 0; i < 3; i++) {
     NSRect rect = default_button_frames[i];
     rect.origin.y += height - default_container_height;
-    targets[i] = [owner->content_view convertRect:rect fromView:container];
+    targets[i] = [proton_engine_window_content_view(owner) convertRect:rect fromView:container];
   }
   if (owner->button_position_custom) {
     NSRect cluster = NSUnionRect(NSUnionRect(targets[0], targets[1]), targets[2]);
-    NSRect bounds = owner->content_view.bounds;
+    NSRect bounds = proton_engine_window_content_view(owner).bounds;
     CGFloat dx = NSMinX(bounds) + owner->button_position_x - NSMinX(cluster);
     CGFloat dy = NSMaxY(bounds) - owner->button_position_y - NSMaxY(cluster);
     for (int i = 0; i < 3; i++) {
@@ -709,7 +709,7 @@ int32_t proton_engine_window_get_titlebar_area(
   }
   for (int i = 0; i < 3; i++) {
     NSRect target = [button_parent convertRect:targets[i]
-                                    fromView:owner->content_view];
+                                    fromView:proton_engine_window_content_view(owner)];
     if (!NSEqualRects(buttons[i].frame, target)) {
       [buttons[i] setFrame:target];
     }
@@ -958,8 +958,8 @@ static int32_t proton_engine_window_create_browser(
   memset(&browser_settings, 0, sizeof(browser_settings));
   window_info.size = sizeof(window_info);
   browser_settings.size = sizeof(browser_settings);
-  if (window->content_view != nil) {
-    window_info.parent_view = (__bridge void *)window->content_view;
+  if (proton_engine_window_content_view(window) != nil) {
+    window_info.parent_view = (__bridge void *)proton_engine_window_content_view(window);
   }
   if (window->headless) {
     window_info.windowless_rendering_enabled = 1;
@@ -1141,7 +1141,7 @@ int32_t proton_engine_window_create(
       [content_view setAutoresizingMask:NSViewWidthSizable |
                                         NSViewHeightSizable];
       [proton_engine_window_native_window(window) setContentView:content_view];
-      window->content_view = content_view;
+      proton_engine_window_set_content_view(window, content_view);
       [content_view release];
       delegate = [[ProtonWindowDelegate alloc] init];
       delegate->platform = window->platform;
@@ -1332,14 +1332,14 @@ static void proton_engine_window_detach_native_window(
     proton_engine_window_t *window) {
   if (window == NULL || proton_engine_window_native_window(window) == nil) {
     if (window != NULL) {
-      window->content_view = nil;
+      proton_engine_window_set_content_view(window, nil);
       window->browser_view = nil;
     }
     return;
   }
   NSWindow *native_window = proton_engine_window_native_window(window);
   proton_engine_window_set_native_window(window, nil);
-  window->content_view = nil;
+  proton_engine_window_set_content_view(window, nil);
   window->browser_view = nil;
   [native_window setDelegate:nil];
   [native_window close];
@@ -2469,8 +2469,8 @@ int32_t proton_engine_window_set_background_color(
     const CGFloat red = (CGFloat)((color >> 16) & 0xff) / 255.0;
     const CGFloat green = (CGFloat)((color >> 8) & 0xff) / 255.0;
     const CGFloat blue = (CGFloat)(color & 0xff) / 255.0;
-    window->content_view.wantsLayer = YES;
-    window->content_view.layer.backgroundColor =
+    proton_engine_window_content_view(window).wantsLayer = YES;
+    proton_engine_window_content_view(window).layer.backgroundColor =
         [NSColor colorWithRed:red green:green blue:blue alpha:alpha].CGColor;
     return PROTON_OK;
   }

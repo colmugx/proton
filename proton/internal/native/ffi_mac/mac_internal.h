@@ -192,6 +192,8 @@ struct proton_engine_window {
   cef_rect_t osr_popup_rect;
   int closed;
   int closing;
+  int destroy_requested;
+  int detach_presentation_requested;
   struct proton_engine_view *views;
   struct proton_engine_window *next;
 };

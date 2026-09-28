@@ -772,21 +772,23 @@ int32_t proton_engine_window_create(
     return PROTON_ERR_INVALID_ARGUMENT;
   }
   *out_window = NULL;
-  if (runtime == NULL || input_config == NULL ||
-      !proton_engine_runtime_initialized()) {
+  if (input_config == NULL ||
+      (!input_config->defer_presentation &&
+       (runtime == NULL || !proton_engine_runtime_initialized()))) {
     proton_engine_set_message(error, error_len, "runtime is not initialized");
     return PROTON_ERR_NOT_INITIALIZED;
   }
 
   proton_engine_window_config_t config = *input_config;
+  const int headless = runtime != NULL ? runtime->headless : 0;
 
-  if (runtime->headless && config.titlebar_overlay) {
+  if (headless && config.titlebar_overlay) {
     proton_engine_set_message(
         error, error_len,
         "titlebar overlay is not supported in headless mode");
     return PROTON_ERR_UNSUPPORTED;
   }
-  if (!runtime->headless) {
+  if (!headless) {
     proton_engine_register_window_class();
   }
   proton_engine_window_t *window =
@@ -797,7 +799,7 @@ int32_t proton_engine_window_create(
   }
   window->width = config.width;
   window->height = config.height;
-  window->headless = runtime->headless;
+  window->headless = headless;
   window->size_hint = config.size_hint;
   window->resizable = config.size_hint != 1;
   window->movable = 1;
@@ -906,7 +908,7 @@ int32_t proton_engine_window_create(
                        SWP_FRAMECHANGED);
     }
     ShowWindow(window->hwnd, SW_SHOW);
-    if (runtime->menu_definition != NULL) {
+    if (runtime != NULL && runtime->menu_definition != NULL) {
       int32_t menu_status = proton_win_menu_apply_to_window(
           window, runtime->menu_definition, error, error_len);
       if (menu_status != PROTON_OK) {

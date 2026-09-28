@@ -191,7 +191,7 @@ static proton_window_theme_t proton_engine_window_effective_theme(
 
 static void proton_engine_apply_size_constraints(
     proton_engine_window_t *window) {
-  if (window == NULL || window->window == NULL || window->headless) {
+  if (window == NULL || proton_engine_window_set_native_widget(window,= NULL || window->headless) {
     return;
   }
   GdkGeometry geometry = {0};
@@ -211,8 +211,14 @@ static void proton_engine_apply_size_constraints(
     geometry.max_aspect = window->aspect_ratio;
     hints = (GdkWindowHints)(hints | GDK_HINT_ASPECT);
   }
-  gtk_window_set_geometry_hints(GTK_WINDOW(window->window), NULL,
+  gtk_window_set_geometry_hints(GTK_WINDOW(proton_engine_window_native_widget(window)), NULL,
                                 hints == 0 ? NULL : &geometry, hints);
+}
+
+static proton_engine_window_t *proton_engine_window_from_signal_owner(
+    gpointer user_data) {
+  proton_platform_window_t *platform = (proton_platform_window_t *)user_data;
+  return platform != NULL ? platform->backend : NULL;
 }
 
 static gboolean proton_engine_on_window_delete(GtkWidget *widget,
@@ -220,7 +226,8 @@ static gboolean proton_engine_on_window_delete(GtkWidget *widget,
                                                gpointer user_data) {
   (void)widget;
   (void)event;
-  proton_engine_window_t *window = (proton_engine_window_t *)user_data;
+  proton_engine_window_t *window =
+      proton_engine_window_from_signal_owner(user_data);
   if (window == NULL || window->closed) {
     return FALSE;
   }
@@ -269,9 +276,10 @@ static gboolean proton_engine_on_window_delete(GtkWidget *widget,
 static void proton_engine_on_window_destroy(GtkWidget *widget,
                                             gpointer user_data) {
   (void)widget;
-  proton_engine_window_t *window = (proton_engine_window_t *)user_data;
+  proton_engine_window_t *window =
+      proton_engine_window_from_signal_owner(user_data);
   if (window != NULL) {
-    window->window = NULL;
+    proton_engine_window_set_native_widget(window, NULL));
     window->root_box = NULL;
     window->menu_bar = NULL;
     window->browser_host = NULL;
@@ -297,11 +305,11 @@ proton_engine_window_titlebar_area(
           window != NULL && window->zoom_percent > 0 ? window->zoom_percent
                                                      : 100,
   };
-  if (window == NULL || !window->titlebar_overlay || window->window == NULL ||
+  if (window == NULL || !window->titlebar_overlay || proton_engine_window_set_native_widget(window,= NULL ||
       window->browser_host == NULL || window->overlay_controls == NULL) {
     return area;
   }
-  GdkWindow *gdk_window = gtk_widget_get_window(window->window);
+  GdkWindow *gdk_window = gtk_widget_get_window(proton_engine_window_native_widget(window));
   if (gdk_window == NULL ||
       (gdk_window_get_state(gdk_window) & GDK_WINDOW_STATE_FULLSCREEN) != 0) {
     return area;
@@ -425,7 +433,8 @@ static void proton_engine_browser_host_size_allocate(GtkWidget *widget,
                                                       GtkAllocation *allocation,
                                                       gpointer user_data) {
   (void)widget;
-  proton_engine_window_t *window = (proton_engine_window_t *)user_data;
+  proton_engine_window_t *window =
+      proton_engine_window_from_signal_owner(user_data);
   if (window == NULL || allocation == NULL) {
     return;
   }
@@ -440,7 +449,8 @@ static gboolean proton_engine_window_configure(GtkWidget *widget,
                                                gpointer user_data) {
   (void)widget;
   (void)event;
-  proton_engine_window_t *window = (proton_engine_window_t *)user_data;
+  proton_engine_window_t *window =
+      proton_engine_window_from_signal_owner(user_data);
   proton_engine_sync_browser_bounds(window);
   if (window != NULL && proton_engine_window_browser(window) != NULL) {
     cef_browser_host_t *host = proton_engine_window_browser(window)->get_host(proton_engine_window_browser(window));
@@ -460,7 +470,8 @@ static void proton_engine_window_state_notify(GObject *object,
                                               gpointer user_data) {
   (void)object;
   (void)parameter;
-  proton_engine_window_t *window = (proton_engine_window_t *)user_data;
+  proton_engine_window_t *window =
+      proton_engine_window_from_signal_owner(user_data);
   if (window != NULL) {
     proton_engine_signal_wait_source(PROTON_WAIT_PLATFORM);
   }
@@ -682,6 +693,10 @@ int32_t proton_engine_window_create(
                               "failed to allocate window state");
     return PROTON_ERR_ENGINE;
   }
+  window->platform = config.platform_window;
+  if (window->platform != NULL) {
+    window->platform->backend = window;
+  }
   window->runtime = runtime;
   window->public_window_id = config.public_window;
   window->width = config.width;
@@ -747,8 +762,8 @@ int32_t proton_engine_window_create(
   }
 
   if (!window->headless) {
-    window->window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-    if (window->window == NULL) {
+    proton_engine_window_set_native_widget(window, gtk_window_new(GTK_WINDOW_TOPLEVEL));
+    if (proton_engine_window_set_native_widget(window,= NULL) {
       proton_browser_lifecycle_creation_failed(window->browser_lifecycle);
       proton_browser_lifecycle_clear_owner(window->browser_lifecycle);
       proton_browser_session_destroy(window->browser_session);
@@ -759,7 +774,7 @@ int32_t proton_engine_window_create(
     }
     window->root_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
     if (window->root_box == NULL) {
-      gtk_widget_destroy(window->window);
+      gtk_widget_destroy(proton_engine_window_native_widget(window));
       proton_browser_lifecycle_creation_failed(window->browser_lifecycle);
       proton_browser_lifecycle_clear_owner(window->browser_lifecycle);
       proton_browser_session_destroy(window->browser_session);
@@ -769,20 +784,20 @@ int32_t proton_engine_window_create(
                                 "window root container creation failed");
       return PROTON_ERR_PLATFORM;
     }
-    proton_engine_use_default_x11_visual(window->window);
-    gtk_window_set_title(GTK_WINDOW(window->window),
+    proton_engine_use_default_x11_visual(proton_engine_window_native_widget(window));
+    gtk_window_set_title(GTK_WINDOW(proton_engine_window_native_widget(window)),
                          config.title[0] != '\0' ? config.title : "Proton");
-    gtk_window_set_default_size(GTK_WINDOW(window->window), config.width,
+    gtk_window_set_default_size(GTK_WINDOW(proton_engine_window_native_widget(window)), config.width,
                                 config.height);
     if (config.size_hint == 1) {
-      gtk_window_set_resizable(GTK_WINDOW(window->window), FALSE);
+      gtk_window_set_resizable(GTK_WINDOW(proton_engine_window_native_widget(window)), FALSE);
     }
     proton_engine_apply_size_constraints(window);
     if (window->titlebar_overlay) {
-      gtk_window_set_decorated(GTK_WINDOW(window->window), FALSE);
+      gtk_window_set_decorated(GTK_WINDOW(proton_engine_window_native_widget(window)), FALSE);
       window->overlay = gtk_overlay_new();
       if (window->overlay == NULL) {
-        gtk_widget_destroy(window->window);
+        gtk_widget_destroy(proton_engine_window_native_widget(window));
         proton_browser_lifecycle_creation_failed(window->browser_lifecycle);
         proton_browser_lifecycle_clear_owner(window->browser_lifecycle);
         proton_browser_session_destroy(window->browser_session);
@@ -795,7 +810,7 @@ int32_t proton_engine_window_create(
     }
     window->browser_host = gtk_drawing_area_new();
     if (window->browser_host == NULL) {
-      gtk_widget_destroy(window->window);
+      gtk_widget_destroy(proton_engine_window_native_widget(window));
       proton_browser_lifecycle_creation_failed(window->browser_lifecycle);
       proton_browser_lifecycle_clear_owner(window->browser_lifecycle);
       proton_browser_session_destroy(window->browser_session);
@@ -809,7 +824,7 @@ int32_t proton_engine_window_create(
     if (window->titlebar_overlay) {
       gtk_container_add(GTK_CONTAINER(window->overlay), window->browser_host);
       if (!proton_engine_overlay_create_controls(window)) {
-        gtk_widget_destroy(window->window);
+        gtk_widget_destroy(proton_engine_window_native_widget(window));
         proton_browser_lifecycle_creation_failed(window->browser_lifecycle);
         proton_browser_lifecycle_clear_owner(window->browser_lifecycle);
         proton_browser_session_destroy(window->browser_session);
@@ -825,12 +840,12 @@ int32_t proton_engine_window_create(
       gtk_box_pack_end(GTK_BOX(window->root_box), window->browser_host, TRUE,
                        TRUE, 0);
     }
-    gtk_container_add(GTK_CONTAINER(window->window), window->root_box);
+    gtk_container_add(GTK_CONTAINER(proton_engine_window_native_widget(window)), window->root_box);
     if (runtime != NULL && runtime->menu_definition != NULL) {
       status = proton_engine_window_install_menu(
           window, runtime->menu_definition, error, error_len);
       if (status != PROTON_OK) {
-        gtk_widget_destroy(window->window);
+        gtk_widget_destroy(proton_engine_window_native_widget(window));
         proton_browser_lifecycle_creation_failed(window->browser_lifecycle);
         proton_browser_lifecycle_clear_owner(window->browser_lifecycle);
         proton_browser_session_destroy(window->browser_session);
@@ -839,30 +854,30 @@ int32_t proton_engine_window_create(
         return status;
       }
     }
-    g_signal_connect(window->window, "delete-event",
-                     G_CALLBACK(proton_engine_on_window_delete), window);
-    g_signal_connect(window->window, "destroy",
-                     G_CALLBACK(proton_engine_on_window_destroy), window);
-    g_signal_connect(window->window, "configure-event",
-                     G_CALLBACK(proton_engine_window_configure), window);
-    g_signal_connect(window->window, "notify::is-active",
-                     G_CALLBACK(proton_engine_window_active_notify), window);
-    g_signal_connect(window->window, "notify::scale-factor",
-                     G_CALLBACK(proton_engine_window_state_notify), window);
-    g_signal_connect(window->window, "screen-changed",
-                     G_CALLBACK(proton_engine_window_screen_changed), window);
-    g_signal_connect(window->window, "style-updated",
-                     G_CALLBACK(proton_engine_window_style_updated), window);
+    g_signal_connect(proton_engine_window_native_widget(window), "delete-event",
+                     G_CALLBACK(proton_engine_on_window_delete), window->platform);
+    g_signal_connect(proton_engine_window_native_widget(window), "destroy",
+                     G_CALLBACK(proton_engine_on_window_destroy), window->platform);
+    g_signal_connect(proton_engine_window_native_widget(window), "configure-event",
+                     G_CALLBACK(proton_engine_window_configure), window->platform);
+    g_signal_connect(proton_engine_window_native_widget(window), "notify::is-active",
+                     G_CALLBACK(proton_engine_window_active_notify), window->platform);
+    g_signal_connect(proton_engine_window_native_widget(window), "notify::scale-factor",
+                     G_CALLBACK(proton_engine_window_state_notify), window->platform);
+    g_signal_connect(proton_engine_window_native_widget(window), "screen-changed",
+                     G_CALLBACK(proton_engine_window_screen_changed), window->platform);
+    g_signal_connect(proton_engine_window_native_widget(window), "style-updated",
+                     G_CALLBACK(proton_engine_window_style_updated), window->platform);
     g_signal_connect(window->browser_host, "size-allocate",
                      G_CALLBACK(proton_engine_browser_host_size_allocate),
-                     window);
+                     window->platform);
     if (window->titlebar_overlay) {
-      g_signal_connect(window->window, "window-state-event",
-                       G_CALLBACK(proton_engine_overlay_window_state), window);
+      g_signal_connect(proton_engine_window_native_widget(window), "window-state-event",
+                       G_CALLBACK(proton_engine_overlay_window_state), window->platform);
     }
-    gtk_widget_realize(window->window);
+    gtk_widget_realize(proton_engine_window_native_widget(window));
     gtk_widget_realize(window->browser_host);
-    gtk_widget_show_all(window->window);
+    gtk_widget_show_all(proton_engine_window_native_widget(window));
     if (window->titlebar_overlay) {
       proton_engine_overlay_update_maximize_button(window);
       proton_engine_overlay_update_input_shape(window);
@@ -875,8 +890,8 @@ int32_t proton_engine_window_create(
                                                  error_len);
     if (status != PROTON_OK) {
       proton_browser_lifecycle_creation_failed(window->browser_lifecycle);
-      if (window->window != NULL) {
-        gtk_widget_destroy(window->window);
+      if (proton_engine_window_native_widget(window) != NULL) {
+        gtk_widget_destroy(proton_engine_window_native_widget(window));
       }
       proton_browser_lifecycle_clear_owner(window->browser_lifecycle);
       proton_browser_session_destroy(window->browser_session);
@@ -904,6 +919,10 @@ int32_t proton_engine_window_attach_presentation(
     proton_engine_set_message(error, error_len,
                               "presentation is already attached");
     return PROTON_ERR_ALREADY_INITIALIZED;
+  }
+  if (window->platform == NULL && config->platform_window != NULL) {
+    window->platform = config->platform_window;
+    window->platform->backend = window;
   }
   window->runtime = runtime;
   window->public_window_id = config->public_window;
@@ -994,10 +1013,10 @@ int32_t proton_engine_window_destroy(proton_engine_window_t *window,
   if (window->closed && proton_engine_window_browser(window) == NULL) {
     window->destroy_requested = 1;
     proton_engine_window_close_views(window);
-    if (window->window != NULL) {
-      g_signal_handlers_disconnect_by_data(window->window, window);
-      gtk_widget_destroy(window->window);
-      window->window = NULL;
+    if (proton_engine_window_native_widget(window) != NULL) {
+      g_signal_handlers_disconnect_by_data(proton_engine_window_native_widget(window), window);
+      gtk_widget_destroy(proton_engine_window_native_widget(window));
+      proton_engine_window_set_native_widget(window, NULL));
       window->browser_host = NULL;
     }
     proton_engine_window_finalize_if_ready(window);
@@ -1016,10 +1035,10 @@ int32_t proton_engine_window_destroy(proton_engine_window_t *window,
   window->closed = 1;
   window->destroy_requested = 1;
   proton_engine_window_close_views(window);
-  if (window->window != NULL) {
-    g_signal_handlers_disconnect_by_data(window->window, window);
-    gtk_widget_destroy(window->window);
-    window->window = NULL;
+  if (proton_engine_window_native_widget(window) != NULL) {
+    g_signal_handlers_disconnect_by_data(proton_engine_window_native_widget(window), window);
+    gtk_widget_destroy(proton_engine_window_native_widget(window));
+    proton_engine_window_set_native_widget(window, NULL));
     window->browser_host = NULL;
   }
   proton_engine_window_finalize_if_ready(window);
@@ -1029,7 +1048,7 @@ int32_t proton_engine_window_destroy(proton_engine_window_t *window,
 int32_t proton_engine_window_show(proton_engine_window_t *window,
                                   char *error,
                                   size_t error_len) {
-  if (window == NULL || (!window->headless && window->window == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_set_native_widget(window,= NULL)) {
     proton_engine_set_message(error, error_len, "window is required");
     return PROTON_ERR_INVALID_ARGUMENT;
   }
@@ -1043,27 +1062,27 @@ int32_t proton_engine_window_show(proton_engine_window_t *window,
       }
     }
   } else {
-    gtk_widget_show_all(window->window);
-    gtk_window_present(GTK_WINDOW(window->window));
+    gtk_widget_show_all(proton_engine_window_native_widget(window));
+    gtk_window_present(GTK_WINDOW(proton_engine_window_native_widget(window)));
   }
   return PROTON_OK;
 }
 
 int32_t proton_engine_window_show_inactive(proton_engine_window_t *window,
                                            char *error, size_t error_len) {
-  if (window == NULL || (!window->headless && window->window == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_set_native_widget(window,= NULL)) {
     proton_engine_set_message(error, error_len, "window is required");
     return PROTON_ERR_INVALID_ARGUMENT;
   }
   if (window->headless) return proton_engine_window_show(window, error, error_len);
-  gtk_widget_show_all(window->window);
+  gtk_widget_show_all(proton_engine_window_native_widget(window));
   return PROTON_OK;
 }
 
 int32_t proton_engine_window_hide(proton_engine_window_t *window,
                                   char *error,
                                   size_t error_len) {
-  if (window == NULL || (!window->headless && window->window == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_set_native_widget(window,= NULL)) {
     proton_engine_set_message(error, error_len, "window is required");
     return PROTON_ERR_INVALID_ARGUMENT;
   }
@@ -1077,7 +1096,7 @@ int32_t proton_engine_window_hide(proton_engine_window_t *window,
       }
     }
   } else {
-    gtk_widget_hide(window->window);
+    gtk_widget_hide(proton_engine_window_native_widget(window));
   }
   return PROTON_OK;
 }
@@ -1085,7 +1104,7 @@ int32_t proton_engine_window_hide(proton_engine_window_t *window,
 int32_t proton_engine_window_close(proton_engine_window_t *window,
                                    char *error,
                                    size_t error_len) {
-  if (window == NULL || (!window->headless && window->window == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_set_native_widget(window,= NULL)) {
     proton_engine_set_message(error, error_len, "window is required");
     return PROTON_ERR_INVALID_ARGUMENT;
   }
@@ -1104,7 +1123,7 @@ int32_t proton_engine_window_close(proton_engine_window_t *window,
     return PROTON_OK;
   }
   if (!window->headless) {
-    gtk_window_close(GTK_WINDOW(window->window));
+    gtk_window_close(GTK_WINDOW(proton_engine_window_native_widget(window)));
     return PROTON_OK;
   }
   if (proton_engine_window_browser(window) != NULL) {
@@ -1129,12 +1148,12 @@ int32_t proton_engine_window_is_closed(proton_engine_window_t *window) {
 int32_t proton_engine_window_focus(proton_engine_window_t *window,
                                    char *error,
                                    size_t error_len) {
-  if (window == NULL || (!window->headless && window->window == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_set_native_widget(window,= NULL)) {
     proton_engine_set_message(error, error_len, "window is required");
     return PROTON_ERR_INVALID_ARGUMENT;
   }
   if (!window->headless) {
-    gtk_window_present(GTK_WINDOW(window->window));
+    gtk_window_present(GTK_WINDOW(proton_engine_window_native_widget(window)));
   }
   if (proton_engine_window_browser(window) != NULL) {
     cef_browser_host_t *host = proton_engine_window_browser(window)->get_host(proton_engine_window_browser(window));
@@ -1150,7 +1169,7 @@ int32_t proton_engine_window_set_title(proton_engine_window_t *window,
                                        const char *title,
                                        char *error,
                                        size_t error_len) {
-  if (window == NULL || (!window->headless && window->window == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_set_native_widget(window,= NULL)) {
     proton_engine_set_message(error, error_len, "window is required");
     return PROTON_ERR_INVALID_ARGUMENT;
   }
@@ -1159,14 +1178,14 @@ int32_t proton_engine_window_set_title(proton_engine_window_t *window,
                               "window title is not supported in headless mode");
     return PROTON_ERR_UNSUPPORTED;
   }
-  gtk_window_set_title(GTK_WINDOW(window->window), title != NULL ? title : "");
+  gtk_window_set_title(GTK_WINDOW(proton_engine_window_native_widget(window)), title != NULL ? title : "");
   return PROTON_OK;
 }
 
 int32_t proton_engine_window_set_icon(proton_engine_window_t *window,
                                       const char *path, char *error,
                                       size_t error_len) {
-  if (window == NULL || (!window->headless && window->window == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_set_native_widget(window,= NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -1180,7 +1199,7 @@ int32_t proton_engine_window_set_icon(proton_engine_window_t *window,
     return PROTON_ERR_UNSUPPORTED;
   }
   GError *load_error = NULL;
-  gtk_window_set_icon_from_file(GTK_WINDOW(window->window), path, &load_error);
+  gtk_window_set_icon_from_file(GTK_WINDOW(proton_engine_window_native_widget(window)), path, &load_error);
   if (load_error != NULL) {
     proton_engine_set_message(error, error_len, load_error->message);
     g_error_free(load_error);
@@ -1193,7 +1212,7 @@ int32_t proton_engine_window_set_parent(proton_engine_window_t *window,
                                         proton_engine_window_t *parent,
                                         int32_t modal, char *error,
                                         size_t error_len) {
-  if (window == NULL || (!window->headless && window->window == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_set_native_widget(window,= NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -1209,8 +1228,8 @@ int32_t proton_engine_window_set_parent(proton_engine_window_t *window,
   GtkWindow *parent_window = parent != NULL && parent->window != NULL
                                  ? GTK_WINDOW(parent->window)
                                  : NULL;
-  gtk_window_set_transient_for(GTK_WINDOW(window->window), parent_window);
-  gtk_window_set_modal(GTK_WINDOW(window->window),
+  gtk_window_set_transient_for(GTK_WINDOW(proton_engine_window_native_widget(window)), parent_window);
+  gtk_window_set_modal(GTK_WINDOW(proton_engine_window_native_widget(window)),
                        parent_window != NULL && modal != 0);
   return PROTON_OK;
 }
@@ -1220,7 +1239,7 @@ int32_t proton_engine_window_set_size(proton_engine_window_t *window,
                                       int32_t height,
                                       char *error,
                                       size_t error_len) {
-  if (window == NULL || (!window->headless && window->window == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_set_native_widget(window,= NULL)) {
     proton_engine_set_message(error, error_len, "window is required");
     return PROTON_ERR_INVALID_ARGUMENT;
   }
@@ -1234,7 +1253,7 @@ int32_t proton_engine_window_set_size(proton_engine_window_t *window,
   if (window->headless) {
     proton_engine_sync_browser_bounds(window);
   } else {
-    gtk_window_resize(GTK_WINDOW(window->window), width, height);
+    gtk_window_resize(GTK_WINDOW(proton_engine_window_native_widget(window)), width, height);
   }
   return PROTON_OK;
 }
@@ -1242,7 +1261,7 @@ int32_t proton_engine_window_set_size(proton_engine_window_t *window,
 int32_t proton_engine_window_set_content_size(
     proton_engine_window_t *window, int32_t width, int32_t height,
     char *error, size_t error_len) {
-  if (window == NULL || (!window->headless && window->window == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_set_native_widget(window,= NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -1260,10 +1279,10 @@ int32_t proton_engine_window_set_content_size(
   gtk_widget_get_allocation(window->browser_host, &allocation);
   int outer_width = 0;
   int outer_height = 0;
-  gtk_window_get_size(GTK_WINDOW(window->window), &outer_width, &outer_height);
+  gtk_window_get_size(GTK_WINDOW(proton_engine_window_native_widget(window)), &outer_width, &outer_height);
   int target_outer_width = outer_width + width - allocation.width;
   int target_outer_height = outer_height + height - allocation.height;
-  gtk_window_resize(GTK_WINDOW(window->window), target_outer_width,
+  gtk_window_resize(GTK_WINDOW(proton_engine_window_native_widget(window)), target_outer_width,
                     target_outer_height);
   return PROTON_OK;
 }
@@ -1290,7 +1309,7 @@ int32_t proton_engine_window_get_content_size(
 int32_t proton_engine_window_set_minimum_size(
     proton_engine_window_t *window, int32_t width, int32_t height,
     char *error, size_t error_len) {
-  if (window == NULL || (!window->headless && window->window == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_set_native_widget(window,= NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -1315,7 +1334,7 @@ int32_t proton_engine_window_set_minimum_size(
 int32_t proton_engine_window_set_maximum_size(
     proton_engine_window_t *window, int32_t width, int32_t height,
     char *error, size_t error_len) {
-  if (window == NULL || (!window->headless && window->window == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_set_native_widget(window,= NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -1340,7 +1359,7 @@ int32_t proton_engine_window_set_maximum_size(
 int32_t proton_engine_window_set_aspect_ratio(
     proton_engine_window_t *window, double aspect_ratio, char *error,
     size_t error_len) {
-  if (window == NULL || (!window->headless && window->window == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_set_native_widget(window,= NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -1363,7 +1382,7 @@ int32_t proton_engine_window_set_aspect_ratio(
 int32_t proton_engine_window_set_movable(proton_engine_window_t *window,
                                          int32_t movable, char *error,
                                          size_t error_len) {
-  if (window == NULL || (!window->headless && window->window == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_set_native_widget(window,= NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -1385,7 +1404,7 @@ int32_t proton_engine_window_set_movable(proton_engine_window_t *window,
 int32_t proton_engine_window_set_opacity(proton_engine_window_t *window,
                                          double opacity, char *error,
                                          size_t error_len) {
-  if (window == NULL || (!window->headless && window->window == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_set_native_widget(window,= NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -1400,14 +1419,14 @@ int32_t proton_engine_window_set_opacity(proton_engine_window_t *window,
     return PROTON_ERR_UNSUPPORTED;
   }
   const double bounded_opacity = opacity < 0.0 ? 0.0 : (opacity > 1.0 ? 1.0 : opacity);
-  gtk_widget_set_opacity(window->window, bounded_opacity);
+  gtk_widget_set_opacity(proton_engine_window_native_widget(window), bounded_opacity);
   return PROTON_OK;
 }
 
 int32_t proton_engine_window_set_skip_taskbar(proton_engine_window_t *window,
                                               int32_t skip, char *error,
                                               size_t error_len) {
-  if (window == NULL || (!window->headless && window->window == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_set_native_widget(window,= NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -1428,7 +1447,7 @@ int32_t proton_engine_window_set_skip_taskbar(proton_engine_window_t *window,
 int32_t proton_engine_window_set_content_protection(
     proton_engine_window_t *window, int32_t enabled, char *error,
     size_t error_len) {
-  if (window == NULL || (!window->headless && window->window == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_set_native_widget(window,= NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -1448,7 +1467,7 @@ int32_t proton_engine_window_set_content_protection(
 int32_t proton_engine_window_set_minimizable(
     proton_engine_window_t *window, int32_t minimizable, char *error,
     size_t error_len) {
-  if (window == NULL || (!window->headless && window->window == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_set_native_widget(window,= NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -1468,7 +1487,7 @@ int32_t proton_engine_window_set_minimizable(
 int32_t proton_engine_window_set_maximizable(
     proton_engine_window_t *window, int32_t maximizable, char *error,
     size_t error_len) {
-  if (window == NULL || (!window->headless && window->window == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_set_native_widget(window,= NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -1488,7 +1507,7 @@ int32_t proton_engine_window_set_maximizable(
 int32_t proton_engine_window_set_closable(
     proton_engine_window_t *window, int32_t closable, char *error,
     size_t error_len) {
-  if (window == NULL || (!window->headless && window->window == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_set_native_widget(window,= NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -1531,7 +1550,7 @@ int32_t proton_engine_window_get_button_position(
 int32_t proton_engine_window_set_button_visibility(
     proton_engine_window_t *window, int32_t visible, char *error,
     size_t error_len) {
-  if (window == NULL || (!window->headless && window->window == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_set_native_widget(window,= NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -1550,7 +1569,7 @@ int32_t proton_engine_window_set_button_visibility(
 int32_t proton_engine_window_set_focusable(
     proton_engine_window_t *window, int32_t focusable, char *error,
     size_t error_len) {
-  if (window == NULL || (!window->headless && window->window == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_set_native_widget(window,= NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -1570,7 +1589,7 @@ int32_t proton_engine_window_set_focusable(
 int32_t proton_engine_window_set_fullscreenable(
     proton_engine_window_t *window, int32_t fullscreenable, char *error,
     size_t error_len) {
-  if (window == NULL || (!window->headless && window->window == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_set_native_widget(window,= NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -1591,7 +1610,7 @@ int32_t proton_engine_window_set_fullscreenable(
 int32_t proton_engine_window_set_has_shadow(
     proton_engine_window_t *window, int32_t has_shadow, char *error,
     size_t error_len) {
-  if (window == NULL || (!window->headless && window->window == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_set_native_widget(window,= NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -1610,7 +1629,7 @@ int32_t proton_engine_window_set_has_shadow(
 int32_t proton_engine_window_set_ignore_mouse_events(
     proton_engine_window_t *window, int32_t ignore, int32_t forward,
     char *error, size_t error_len) {
-  if (window == NULL || (!window->headless && window->window == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_set_native_widget(window,= NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -1632,7 +1651,7 @@ int32_t proton_engine_window_set_ignore_mouse_events(
 int32_t proton_engine_window_set_background_color(
     proton_engine_window_t *window, uint32_t color, char *error,
     size_t error_len) {
-  if (window == NULL || (!window->headless && window->window == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_set_native_widget(window,= NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -1647,7 +1666,7 @@ int32_t proton_engine_window_set_background_color(
       .blue = (double)(color & 0xff) / 255.0,
       .alpha = (double)((color >> 24) & 0xff) / 255.0,
   };
-  gtk_widget_override_background_color(window->window, GTK_STATE_FLAG_NORMAL,
+  gtk_widget_override_background_color(proton_engine_window_native_widget(window), GTK_STATE_FLAG_NORMAL,
                                        &native_color);
   gtk_widget_override_background_color(window->root_box, GTK_STATE_FLAG_NORMAL,
                                        &native_color);
@@ -1658,7 +1677,7 @@ int32_t proton_engine_window_set_theme(
     proton_engine_window_t *window,
     proton_window_theme_preference_t theme_preference, char *error,
     size_t error_len) {
-  if (window == NULL || (!window->headless && window->window == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_set_native_widget(window,= NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -1686,7 +1705,7 @@ int32_t proton_engine_window_set_theme(
 int32_t proton_engine_window_set_visible_on_all_workspaces(
     proton_engine_window_t *window, int32_t visible, char *error,
     size_t error_len) {
-  if (window == NULL || (!window->headless && window->window == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_set_native_widget(window,= NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -1700,9 +1719,9 @@ int32_t proton_engine_window_set_visible_on_all_workspaces(
     return PROTON_ERR_UNSUPPORTED;
   }
   if (visible) {
-    gtk_window_stick(GTK_WINDOW(window->window));
+    gtk_window_stick(GTK_WINDOW(proton_engine_window_native_widget(window)));
   } else {
-    gtk_window_unstick(GTK_WINDOW(window->window));
+    gtk_window_unstick(GTK_WINDOW(proton_engine_window_native_widget(window)));
   }
   return PROTON_OK;
 }
@@ -1710,7 +1729,7 @@ int32_t proton_engine_window_set_visible_on_all_workspaces(
 int32_t proton_engine_window_set_enabled(proton_engine_window_t *window,
                                          int32_t enabled, char *error,
                                          size_t error_len) {
-  if (window == NULL || (!window->headless && window->window == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_set_native_widget(window,= NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -1719,7 +1738,7 @@ int32_t proton_engine_window_set_enabled(proton_engine_window_t *window,
     return PROTON_ERR_INVALID_ARGUMENT;
   }
   if (window->headless) return PROTON_OK;
-  gtk_widget_set_sensitive(window->window, enabled != 0);
+  gtk_widget_set_sensitive(proton_engine_window_native_widget(window), enabled != 0);
   window->enabled = enabled;
   return PROTON_OK;
 }
@@ -1749,7 +1768,7 @@ int32_t proton_engine_window_set_overlay_icon(
   (void)description;
   (void)error;
   (void)error_len;
-  if (window == NULL || (!window->headless && window->window == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_set_native_widget(window,= NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -1762,7 +1781,7 @@ int32_t proton_engine_window_set_thumbnail_tooltip(
   (void)tooltip;
   (void)error;
   (void)error_len;
-  if (window == NULL || (!window->headless && window->window == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_set_native_widget(window,= NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -1779,7 +1798,7 @@ int32_t proton_engine_window_set_thumbar_buttons(
     return PROTON_ERR_INVALID_ARGUMENT;
   }
   *out_applied = 0;
-  if (window == NULL || (!window->headless && window->window == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_set_native_widget(window,= NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -1796,7 +1815,7 @@ int32_t proton_engine_window_set_thumbar_buttons(
 int32_t proton_engine_window_flash_frame(
     proton_engine_window_t *window, int32_t flash, char *error,
     size_t error_len) {
-  if (window == NULL || (!window->headless && window->window == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_set_native_widget(window,= NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_ARGUMENT;
   }
@@ -1811,8 +1830,8 @@ int32_t proton_engine_window_flash_frame(
     return PROTON_ERR_UNSUPPORTED;
   }
   gboolean urgent =
-      flash != 0 && !gtk_window_is_active(GTK_WINDOW(window->window));
-  gtk_window_set_urgency_hint(GTK_WINDOW(window->window), urgent);
+      flash != 0 && !gtk_window_is_active(GTK_WINDOW(proton_engine_window_native_widget(window)));
+  gtk_window_set_urgency_hint(GTK_WINDOW(proton_engine_window_native_widget(window)), urgent);
   return PROTON_OK;
 }
 
@@ -1822,7 +1841,7 @@ int32_t proton_engine_window_apply(
     char *error,
     size_t error_len) {
   if (window == NULL || action == NULL ||
-      (!window->headless && window->window == NULL)) {
+      (!window->headless && proton_engine_window_set_native_widget(window,= NULL)) {
     proton_engine_set_message(error, error_len,
                               "window and action are required");
     return PROTON_ERR_INVALID_ARGUMENT;
@@ -1854,36 +1873,36 @@ int32_t proton_engine_window_apply(
   }
   switch (action->kind) {
   case PROTON_ENGINE_WINDOW_MINIMIZE:
-    gtk_window_iconify(GTK_WINDOW(window->window));
+    gtk_window_iconify(GTK_WINDOW(proton_engine_window_native_widget(window)));
     break;
   case PROTON_ENGINE_WINDOW_MAXIMIZE:
-    gtk_window_maximize(GTK_WINDOW(window->window));
+    gtk_window_maximize(GTK_WINDOW(proton_engine_window_native_widget(window)));
     break;
   case PROTON_ENGINE_WINDOW_RESTORE:
-    gtk_window_unfullscreen(GTK_WINDOW(window->window));
-    gtk_window_unmaximize(GTK_WINDOW(window->window));
-    gtk_window_deiconify(GTK_WINDOW(window->window));
+    gtk_window_unfullscreen(GTK_WINDOW(proton_engine_window_native_widget(window)));
+    gtk_window_unmaximize(GTK_WINDOW(proton_engine_window_native_widget(window)));
+    gtk_window_deiconify(GTK_WINDOW(proton_engine_window_native_widget(window)));
     break;
   case PROTON_ENGINE_WINDOW_SET_FULLSCREEN:
   case PROTON_ENGINE_WINDOW_SET_KIOSK:
     if (action->value != 0 &&
         (action->kind == PROTON_ENGINE_WINDOW_SET_KIOSK ||
          window->fullscreenable)) {
-      gtk_window_fullscreen(GTK_WINDOW(window->window));
+      gtk_window_fullscreen(GTK_WINDOW(proton_engine_window_native_widget(window)));
     } else if (action->value == 0) {
-      gtk_window_unfullscreen(GTK_WINDOW(window->window));
+      gtk_window_unfullscreen(GTK_WINDOW(proton_engine_window_native_widget(window)));
     }
     break;
   case PROTON_ENGINE_WINDOW_SET_POSITION:
-    gtk_window_move(GTK_WINDOW(window->window), action->x, action->y);
+    gtk_window_move(GTK_WINDOW(proton_engine_window_native_widget(window)), action->x, action->y);
     break;
   case PROTON_ENGINE_WINDOW_SET_ALWAYS_ON_TOP:
-    gtk_window_set_keep_above(GTK_WINDOW(window->window),
+    gtk_window_set_keep_above(GTK_WINDOW(proton_engine_window_native_widget(window)),
                               action->value != 0);
     window->always_on_top = action->value != 0;
     break;
   case PROTON_ENGINE_WINDOW_SET_RESIZABLE:
-    gtk_window_set_resizable(GTK_WINDOW(window->window), action->value != 0);
+    gtk_window_set_resizable(GTK_WINDOW(proton_engine_window_native_widget(window)), action->value != 0);
     break;
   default:
     proton_engine_set_message(error, error_len, "unknown window action");
@@ -1914,15 +1933,15 @@ int32_t proton_engine_window_get_state(
     out_state->visible = !window->headless_hidden;
     return PROTON_OK;
   }
-  if (window->window == NULL) {
+  if (proton_engine_window_set_native_widget(window,= NULL) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
-  gtk_window_get_position(GTK_WINDOW(window->window), &out_state->x,
+  gtk_window_get_position(GTK_WINDOW(proton_engine_window_native_widget(window)), &out_state->x,
                           &out_state->y);
-  gtk_window_get_size(GTK_WINDOW(window->window), &out_state->width,
+  gtk_window_get_size(GTK_WINDOW(proton_engine_window_native_widget(window)), &out_state->width,
                       &out_state->height);
-  GdkWindow *gdk_window = gtk_widget_get_window(window->window);
+  GdkWindow *gdk_window = gtk_widget_get_window(proton_engine_window_native_widget(window));
   if (gdk_window != NULL) {
     GdkDisplay *display = gdk_window_get_display(gdk_window);
     GdkMonitor *monitor =
@@ -1951,9 +1970,9 @@ int32_t proton_engine_window_get_state(
     out_state->fullscreen =
         (state & GDK_WINDOW_STATE_FULLSCREEN) != 0 ? 1 : 0;
   }
-  out_state->visible = gtk_widget_get_visible(window->window) ? 1 : 0;
+  out_state->visible = gtk_widget_get_visible(proton_engine_window_native_widget(window)) ? 1 : 0;
   out_state->focused =
-      gtk_window_has_toplevel_focus(GTK_WINDOW(window->window)) ? 1 : 0;
+      gtk_window_has_toplevel_focus(GTK_WINDOW(proton_engine_window_native_widget(window))) ? 1 : 0;
   out_state->always_on_top = window->always_on_top;
   return PROTON_OK;
 }
@@ -1994,8 +2013,8 @@ int32_t proton_engine_window_respond_close_request(
     if (window->headless) {
       return proton_engine_window_close(window, error, error_len);
     }
-    if (window->window != NULL) {
-      gtk_window_close(GTK_WINDOW(window->window));
+    if (proton_engine_window_native_widget(window) != NULL) {
+      gtk_window_close(GTK_WINDOW(proton_engine_window_native_widget(window)));
     }
   } else if (!allow) {
     window->close_authorized = 0;

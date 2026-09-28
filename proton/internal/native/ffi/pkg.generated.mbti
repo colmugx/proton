@@ -85,6 +85,16 @@ pub fn proton_app_metrics_count_ffi(@ref.Ref[Int]) -> Int
 
 pub fn proton_app_show_ffi() -> Int
 
+pub fn platform_runtime_create(@ref.Ref[RuntimeHandle]) -> Int
+
+pub fn cef_runtime_attach(RuntimeHandle, Int, Bytes, Bytes, Bytes, Bytes, Bytes, Bytes, Bytes, Bytes, Bytes, Bytes, Bytes, Int, Int, Int, Int) -> Int
+
+
+
+
+
+
+
 pub fn proton_host_loop_begin_ffi() -> Int
 
 pub fn proton_host_loop_end_ffi() -> Unit
@@ -442,6 +452,10 @@ pub fn web_request_config_add_redirect_prefix(WebRequestConfigHandle, Bytes, Byt
 pub fn web_request_config_create(@ref.Ref[Int]) -> WebRequestConfigHandle
 
 pub fn web_request_config_empty() -> WebRequestConfigHandle
+
+pub fn platform_window_create(RuntimeHandle, Int, Int, @ref.Ref[WindowHandle]) -> Int
+
+pub fn cef_surface_attach(WindowHandle, Bytes, Int, Int, Bytes, Int, Int, Int, Int, Int, Int, Int, Bytes, Bytes, Bytes, Bytes, Int, Int, Int, Int, Int, BridgeConfigHandle, WebRequestConfigHandle) -> Int
 
 pub fn window_create(RuntimeHandle, Bytes, Int, Int, Bytes, Int, Int, Int, Int, Int, Int, Int, Bytes, Bytes, Bytes, Bytes, Int, Int, Int, Int, Int, BridgeConfigHandle, WebRequestConfigHandle, @ref.Ref[WindowHandle]) -> Int
 

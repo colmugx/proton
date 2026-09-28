@@ -507,7 +507,7 @@ pub fn execute_process(
 ) -> ProcessResult raise NativeError {
   validate_runtime_config(config)
   let out_exit_code = Ref(0)
-  let status = @cef_presentation.driver().execute_process(
+  let status = @cef_presentation.execute_process(
     runtime_presentation_config(config, None, None), out_exit_code,
   )
   if status < 0 {
@@ -538,14 +538,20 @@ pub fn Runtime::Runtime(
   validate_runtime_config(config)
   let (proxy_server, proxy_bypass) = config.resolve_proxy()
   let status = Ref(0)
-  let presentation = @cef_presentation.driver().create(
+  let platform_handle = Ref(@native_ffi.runtime_null())
+  check_status(@native_ffi.platform_runtime_create(platform_handle))
+  let presentation = @cef_presentation.attach_runtime(
+    platform_handle.val,
     runtime_presentation_config(config, proxy_server, proxy_bypass), status,
   )
   if status.val < 0 {
-    raise native_error(status.val)
+    let error = native_error(status.val)
+    ignore(@native_ffi.proton_runtime_begin_destroy_ffi(platform_handle.val))
+    ignore(@native_ffi.proton_runtime_finish_destroy_ffi(platform_handle.val))
+    raise error
   } else {
     Runtime::{
-      platform: PlatformRuntime::{ handle: presentation.handle, },
+      platform: PlatformRuntime::{ handle: platform_handle.val, },
       presentation,
       lifecycle: RuntimeActive,
     }
@@ -557,7 +563,7 @@ fn runtime_presentation_config(
   config : RuntimeConfig,
   proxy_server : String?,
   proxy_bypass : String?,
-) -> @presentation.RuntimeConfig {
+) -> @cef_presentation.RuntimeConfig {
   {
     use_bundled: runtime_config_bool(config.use_bundled),
     runtime_root: runtime_config_string(config.runtime_root),
@@ -1530,7 +1536,14 @@ pub fn Window::Window(
   )
   ignore(runtime.active_handle())
   let status = Ref(0)
-  let presentation = runtime.presentation.create_surface(
+  let platform_handle = Ref(@native_ffi.window_null())
+  check_status(
+    @native_ffi.platform_window_create(
+      runtime.platform.handle, config.width, config.height, platform_handle,
+    ),
+  )
+  let presentation = @cef_presentation.attach_surface(
+    platform_handle.val,
     {
       title: @ffi.to_cstr(config.title),
       width: config.width,
@@ -1570,13 +1583,15 @@ pub fn Window::Window(
     status,
   )
   if status.val < 0 {
-    raise native_error(status.val)
+    let error = native_error(status.val)
+    ignore(@native_ffi.proton_window_destroy_ffi(platform_handle.val))
+    raise error
   } else {
     Window::{
       runtime,
-      platform: PlatformWindow::{ handle: presentation.handle, },
+      platform: PlatformWindow::{ handle: platform_handle.val, },
       presentation,
-      id: @native_ffi.window_logical_id(presentation.handle),
+      id: @native_ffi.window_logical_id(platform_handle.val),
       lifecycle: WindowLive,
       close_interception_enabled: false,
     }

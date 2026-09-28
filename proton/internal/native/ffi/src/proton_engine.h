@@ -198,12 +198,13 @@ int32_t proton_engine_runtime_wait(proton_engine_runtime_t *runtime,
    before any polling; `poll` runs one iteration there -- block, then advance
    the platform toolkit, because nothing else does while this loop owns the
    thread; `end` releases it. */
-int32_t proton_engine_host_loop_begin(char *error, size_t error_len);
-int32_t proton_engine_host_loop_poll(int32_t timeout_ms,
-                                     uint32_t *out_ready_mask,
-                                     char *error,
-                                     size_t error_len);
-void proton_engine_host_loop_end(void);
+int32_t proton_engine_platform_host_loop_begin(char *error, size_t error_len);
+int32_t proton_engine_platform_host_loop_poll(int32_t timeout_ms,
+                                              uint32_t *out_ready_mask,
+                                              char *error,
+                                              size_t error_len);
+void proton_engine_platform_host_loop_end(void);
+int32_t proton_engine_presentation_poll(char *error, size_t error_len);
 void proton_engine_runtime_signal_external_event(
     proton_engine_runtime_t *runtime);
 int32_t proton_engine_runtime_set_menu(

@@ -13,8 +13,8 @@ static bool proton_runtime_event_sink(void *user_data, proton_event_t *event) {
       !proton_event_queue_push(&runtime->events, event)) {
     return false;
   }
-  if (runtime->engine_runtime != NULL) {
-    proton_engine_runtime_signal_external_event(runtime->engine_runtime);
+  if (runtime->presentation_runtime != NULL) {
+    proton_engine_runtime_signal_external_event(runtime->presentation_runtime);
   }
   return true;
 }
@@ -64,7 +64,7 @@ int32_t proton_runtime_slot_create(proton_engine_runtime_t *engine_runtime,
     return proton_set_error(PROTON_ERR_ENGINE,
                             "failed to allocate runtime state");
   }
-  runtime->engine_runtime = engine_runtime;
+  runtime->presentation_runtime = engine_runtime;
   runtime->lifecycle = PROTON_RUNTIME_ACTIVE;
   runtime->app_instance = PROTON_INVALID_HANDLE;
   runtime->owner_thread = proton_current_thread_id();
@@ -214,7 +214,7 @@ int32_t proton_window_slot_create(proton_runtime_slot_t *runtime,
   }
   window->runtime = runtime;
   window->lifecycle = PROTON_WINDOW_LIVE;
-  window->engine_window = engine_window;
+  window->presentation_surface = engine_window;
   window->width = width;
   window->height = height;
   window->logical_id = logical_id;
@@ -321,8 +321,8 @@ void proton_runtime_sync_engine_closed_windows(
   for (proton_window_slot_t *window = runtime->windows; window != NULL;
        window = window->next) {
     if (window->lifecycle == PROTON_WINDOW_DESTROYED ||
-        window->engine_window == NULL ||
-        !proton_engine_window_is_closed(window->engine_window)) {
+        window->presentation_surface == NULL ||
+        !proton_engine_window_is_closed(window->presentation_surface)) {
       continue;
     }
     proton_window_slot_mark_closed(window);
@@ -337,14 +337,14 @@ int32_t proton_runtime_sync_engine_window_states(
   for (proton_window_slot_t *window = runtime->windows; window != NULL;
        window = window->next) {
     if (window->lifecycle != PROTON_WINDOW_LIVE ||
-        window->engine_window == NULL ||
-        proton_engine_window_is_closed(window->engine_window)) {
+        window->presentation_surface == NULL ||
+        proton_engine_window_is_closed(window->presentation_surface)) {
       continue;
     }
     proton_engine_window_state_t state;
     char engine_error[512] = {0};
     int32_t status = proton_engine_window_get_state(
-        window->engine_window, &state, engine_error, sizeof(engine_error));
+        window->presentation_surface, &state, engine_error, sizeof(engine_error));
     if (status != PROTON_OK) {
       return proton_set_engine_status(status, engine_error);
     }
@@ -397,11 +397,11 @@ void proton_runtime_sync_engine_bridge_lifecycle(
        window = window->next) {
     if (window->lifecycle == PROTON_WINDOW_DESTROYING ||
         window->lifecycle == PROTON_WINDOW_DESTROYED ||
-        window->engine_window == NULL) {
+        window->presentation_surface == NULL) {
       continue;
     }
     uint64_t revision =
-        proton_engine_window_bridge_revision(window->engine_window);
+        proton_engine_window_bridge_revision(window->presentation_surface);
     if (revision == 0 || revision == window->bridge_notified_revision) {
       continue;
     }
@@ -421,10 +421,10 @@ int32_t proton_destroy_windows_for_runtime(proton_runtime_slot_t *runtime) {
     proton_window_slot_t *window = runtime->windows;
     proton_window_slot_begin_destroy(window);
     proton_destroy_views_for_window(window);
-    if (window->engine_window != NULL) {
+    if (window->presentation_surface != NULL) {
       char engine_error[512] = {0};
       int32_t status = proton_engine_window_destroy(
-          window->engine_window, engine_error, sizeof(engine_error));
+          window->presentation_surface, engine_error, sizeof(engine_error));
       if (status != PROTON_OK) {
         return proton_set_engine_status(status, engine_error);
       }

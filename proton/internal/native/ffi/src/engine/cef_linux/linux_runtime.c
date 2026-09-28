@@ -940,7 +940,7 @@ static uint32_t proton_engine_runtime_ready_mask(
   return ready_mask & interest_mask;
 }
 
-int32_t proton_engine_host_loop_begin(char *error, size_t error_len) {
+int32_t proton_engine_platform_host_loop_begin(char *error, size_t error_len) {
   /* The wake pipe is plain POSIX and needs no CEF, so the loop can exist long
      before a runtime does. A pipe rather than a bare condition variable
      because poll(2) has to wait on it together with everything else, and
@@ -952,7 +952,7 @@ int32_t proton_engine_host_loop_begin(char *error, size_t error_len) {
   return PROTON_OK;
 }
 
-int32_t proton_engine_host_loop_poll(int32_t timeout_ms,
+int32_t proton_engine_platform_host_loop_poll(int32_t timeout_ms,
                                      uint32_t *out_ready_mask,
                                      char *error,
                                      size_t error_len) {
@@ -960,9 +960,6 @@ int32_t proton_engine_host_loop_poll(int32_t timeout_ms,
       NULL, PROTON_WAIT_ALL, timeout_ms, out_ready_mask, error, error_len);
   if (status != PROTON_OK) {
     return status;
-  }
-  if (!g_proton_cef_initialized) {
-    return PROTON_OK;
   }
   /* The wait above only blocks on descriptors; it dispatches nothing. This is
      where GTK's pending sources run and the only caller of
@@ -972,12 +969,22 @@ int32_t proton_engine_host_loop_poll(int32_t timeout_ms,
   while (g_main_context_pending(NULL)) {
     g_main_context_iteration(NULL, FALSE);
   }
-  cef_do_message_loop_work();
   atomic_store_explicit(&g_message_pump_active, false, memory_order_release);
   return PROTON_OK;
 }
 
-void proton_engine_host_loop_end(void) {
+int32_t proton_engine_presentation_poll(char *error, size_t error_len) {
+  (void)error;
+  (void)error_len;
+  if (g_proton_cef_initialized) {
+    atomic_store_explicit(&g_message_pump_active, true, memory_order_release);
+    cef_do_message_loop_work();
+    atomic_store_explicit(&g_message_pump_active, false, memory_order_release);
+  }
+  return PROTON_OK;
+}
+
+void proton_engine_platform_host_loop_end(void) {
   proton_engine_close_wake_pipe();
 }
 

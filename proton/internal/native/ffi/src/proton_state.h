@@ -47,7 +47,7 @@ typedef enum proton_view_lifecycle {
 struct proton_runtime_slot {
   proton_runtime_lifecycle_t lifecycle;
   bool destroy_prepared;
-  proton_engine_runtime_t *engine_runtime;
+  proton_engine_runtime_t *presentation_runtime;
   int64_t app_instance;
   proton_thread_id_t owner_thread;
   proton_event_queue_t events;
@@ -67,7 +67,7 @@ struct proton_window_slot {
   uint64_t bridge_notified_revision;
   int64_t logical_id;
   proton_runtime_slot_t *runtime;
-  proton_engine_window_t *engine_window;
+  proton_engine_window_t *presentation_surface;
   int32_t width;
   int32_t height;
   proton_engine_window_state_t state;

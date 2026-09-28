@@ -14,6 +14,7 @@
 typedef struct proton_platform_window {
   proton_engine_window_t *backend;
   void *native_window;
+  int32_t release_pending;
   char title[512];
   int32_t width;
   int32_t height;
@@ -47,6 +48,8 @@ PROTON_INTERNAL int32_t proton_platform_window_configure(
 PROTON_INTERNAL void proton_platform_window_free(
     proton_platform_window_t *window);
 PROTON_INTERNAL void proton_platform_window_attach_backend(
+    proton_platform_window_t *window, proton_engine_window_t *backend);
+PROTON_INTERNAL void proton_platform_window_backend_finalized(
     proton_platform_window_t *window, proton_engine_window_t *backend);
 PROTON_INTERNAL proton_engine_window_t *proton_platform_window_backend(
     proton_platform_window_t *window);

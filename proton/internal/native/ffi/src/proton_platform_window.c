@@ -53,9 +53,6 @@ int32_t proton_platform_window_materialize(
   if (window->backend != NULL) {
     return PROTON_OK;
   }
-  if (runtime == NULL) {
-    return PROTON_OK;
-  }
   proton_engine_window_config_t config;
   memset(&config, 0, sizeof(config));
   config.public_window = public_window;

@@ -13,9 +13,30 @@
  */
 typedef struct proton_platform_window {
   proton_engine_window_t *backend;
+  char title[512];
+  int32_t width;
+  int32_t height;
+  int32_t size_hint;
+  int32_t titlebar_overlay;
+  proton_window_theme_preference_t theme_preference;
+  int32_t button_position_custom;
+  int32_t button_position_x;
+  int32_t button_position_y;
+  char titlebar_minimize_label[PROTON_ENGINE_MAX_LABEL_BYTES];
+  char titlebar_maximize_label[PROTON_ENGINE_MAX_LABEL_BYTES];
+  char titlebar_restore_label[PROTON_ENGINE_MAX_LABEL_BYTES];
+  char titlebar_close_label[PROTON_ENGINE_MAX_LABEL_BYTES];
 } proton_platform_window_t;
 
 PROTON_INTERNAL proton_platform_window_t *proton_platform_window_alloc(void);
+PROTON_INTERNAL int32_t proton_platform_window_configure(
+    proton_platform_window_t *window, const char *title, int32_t width,
+    int32_t height, int32_t size_hint, int32_t titlebar_overlay,
+    int32_t theme_preference, int32_t button_position_custom,
+    int32_t button_position_x, int32_t button_position_y,
+    const char *titlebar_minimize_label, const char *titlebar_maximize_label,
+    const char *titlebar_restore_label, const char *titlebar_close_label);
+
 PROTON_INTERNAL void proton_platform_window_free(
     proton_platform_window_t *window);
 PROTON_INTERNAL void proton_platform_window_attach_backend(

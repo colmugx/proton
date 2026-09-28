@@ -14,6 +14,7 @@ typedef struct proton_engine_runtime proton_engine_runtime_t;
 typedef struct proton_engine_window proton_engine_window_t;
 typedef struct proton_engine_view proton_engine_view_t;
 typedef struct proton_engine_image proton_engine_image_t;
+typedef struct proton_platform_window proton_platform_window_t;
 
 typedef struct {
   int32_t x;
@@ -100,6 +101,7 @@ typedef struct {
   proton_browser_policy_t browser_policy;
   proton_web_request_config_t *web_request_config;
   proton_bridge_config_t *bridge_config;
+  proton_platform_window_t *platform_window;
   int32_t defer_presentation;
 } proton_engine_window_config_t;
 

@@ -460,6 +460,7 @@ static void proton_engine_window_free_storage(proton_engine_window_t *window) {
   proton_browser_session_destroy(window->browser_session);
   free(window->draggable_regions);
   proton_engine_overlay_release_input_windows(window);
+  proton_platform_window_backend_finalized(window->platform, window);
   free(window);
   pthread_mutex_unlock(&g_window_lock);
 }

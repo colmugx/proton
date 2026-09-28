@@ -170,4 +170,39 @@ PROTON_INTERNAL int32_t proton_platform_window_flash_frame(
     proton_platform_window_t *window, int32_t flash, char *error,
     size_t error_len);
 
+PROTON_INTERNAL int32_t proton_platform_window_popup_menu(
+    proton_platform_window_t *window, int32_t x, int32_t y,
+    const proton_menu_bar_t *menu_bar, char *error, size_t error_len);
+PROTON_INTERNAL int32_t proton_platform_window_close(
+    proton_platform_window_t *window, char *error, size_t error_len);
+PROTON_INTERNAL int32_t proton_platform_window_set_close_interception(
+    proton_platform_window_t *window, int32_t enabled, char *error,
+    size_t error_len);
+PROTON_INTERNAL int32_t proton_platform_window_respond_close_request(
+    proton_platform_window_t *window, uint64_t request_id, int32_t allow,
+    char *error, size_t error_len);
+PROTON_INTERNAL int32_t proton_platform_window_begin_message_dialog(
+    proton_platform_window_t *window, const char *title_utf8,
+    int32_t title_len, const char *message_utf8, int32_t message_len,
+    int32_t level, int64_t *out_dialog, char *error, size_t error_len);
+PROTON_INTERNAL int32_t proton_platform_window_begin_confirm_dialog(
+    proton_platform_window_t *window, const char *title_utf8,
+    int32_t title_len, const char *message_utf8, int32_t message_len,
+    int32_t level, int64_t *out_dialog, char *error, size_t error_len);
+PROTON_INTERNAL int32_t proton_platform_window_begin_open_file_dialog(
+    proton_platform_window_t *window, const char *title_utf8,
+    int32_t title_len, const char *path_utf8, int32_t path_len,
+    int64_t *out_dialog, char *error, size_t error_len);
+PROTON_INTERNAL int32_t proton_platform_window_begin_save_file_dialog(
+    proton_platform_window_t *window, const char *title_utf8,
+    int32_t title_len, const char *path_utf8, int32_t path_len,
+    int64_t *out_dialog, char *error, size_t error_len);
+PROTON_INTERNAL int32_t proton_platform_window_begin_choose_directory_dialog(
+    proton_platform_window_t *window, const char *title_utf8,
+    int32_t title_len, const char *path_utf8, int32_t path_len,
+    int64_t *out_dialog, char *error, size_t error_len);
+PROTON_INTERNAL int32_t proton_platform_window_cancel_dialog(
+    proton_platform_window_t *window, int64_t dialog, char *error,
+    size_t error_len);
+
 #endif

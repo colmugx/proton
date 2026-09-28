@@ -811,6 +811,12 @@ static void CEF_CALLBACK proton_engine_on_before_close(
   if (window == NULL) {
     return;
   }
+  if (window->detach_presentation_requested &&
+      !window->destroy_requested) {
+    proton_engine_signal_wait_source(window->runtime, PROTON_WAIT_PLATFORM);
+    proton_engine_window_finalize_if_ready(window);
+    return;
+  }
   window->closed = 1;
   if (window->hwnd != NULL) {
     // CEF keeps unwinding the browser teardown after this callback returns,

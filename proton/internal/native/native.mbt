@@ -1599,13 +1599,16 @@ pub fn Window::destroy(self : Window) -> Unit raise NativeError {
     WindowLive | WindowCloseRequested | WindowDestroying =>
       self.lifecycle = WindowDestroying
   }
-  let status = self.presentation.destroy()
-  if status < 0 {
-    raise native_error(status)
-  } else {
-    self.platform.handle = @native_ffi.window_null()
-    self.lifecycle = WindowDestroyed
+  let presentation_status = self.presentation.destroy()
+  if presentation_status < 0 {
+    raise native_error(presentation_status)
   }
+  let platform_status = @native_ffi.proton_window_destroy_ffi(self.platform.handle)
+  if platform_status < 0 {
+    raise native_error(platform_status)
+  }
+  self.platform.handle = @native_ffi.window_null()
+  self.lifecycle = WindowDestroyed
 }
 
 ///|

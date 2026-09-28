@@ -933,10 +933,10 @@ int32_t proton_window_show(proton_window_handle_t window) {
   if (status != PROTON_OK) {
     return status;
   }
-  if (slot->presentation_surface != NULL) {
+  {
     char engine_error[512] = {0};
-    status = proton_engine_window_show(slot->presentation_surface, engine_error,
-                                       sizeof(engine_error));
+    status = proton_platform_window_show(slot->platform_window, engine_error,
+                                         sizeof(engine_error));
     if (status != PROTON_OK) {
       return proton_set_engine_status(status, engine_error);
     }
@@ -950,10 +950,10 @@ int32_t proton_window_show_inactive(proton_window_handle_t window) {
   proton_window_slot_t *slot = NULL;
   int32_t status = proton_get_window(window, &slot);
   if (status != PROTON_OK) return status;
-  if (slot->presentation_surface != NULL) {
+  {
     char engine_error[512] = {0};
-    status = proton_engine_window_show_inactive(
-        slot->presentation_surface, engine_error, sizeof(engine_error));
+    status = proton_platform_window_show_inactive(
+        slot->platform_window, engine_error, sizeof(engine_error));
     if (status != PROTON_OK) return proton_set_engine_status(status, engine_error);
   }
   slot->visible = true;
@@ -967,10 +967,10 @@ int32_t proton_window_hide(proton_window_handle_t window) {
   if (status != PROTON_OK) {
     return status;
   }
-  if (slot->presentation_surface != NULL) {
+  {
     char engine_error[512] = {0};
-    status = proton_engine_window_hide(slot->presentation_surface, engine_error,
-                                       sizeof(engine_error));
+    status = proton_platform_window_hide(slot->platform_window, engine_error,
+                                         sizeof(engine_error));
     if (status != PROTON_OK) {
       return proton_set_engine_status(status, engine_error);
     }
@@ -1026,10 +1026,10 @@ int32_t proton_window_focus(proton_window_handle_t window) {
   if (status != PROTON_OK) {
     return status;
   }
-  if (slot->presentation_surface != NULL) {
+  {
     char engine_error[512] = {0};
-    status = proton_engine_window_focus(slot->presentation_surface, engine_error,
-                                        sizeof(engine_error));
+    status = proton_platform_window_focus(slot->platform_window, engine_error,
+                                          sizeof(engine_error));
     if (status != PROTON_OK) {
       return proton_set_engine_status(status, engine_error);
     }
@@ -1047,11 +1047,11 @@ int32_t proton_window_set_title(proton_window_handle_t window, const char *title
   if (title == NULL) {
     return proton_set_error(PROTON_ERR_INVALID_ARGUMENT, "title is required");
   }
-  if (slot->presentation_surface != NULL) {
+  {
     char engine_error[512] = {0};
-    status = proton_engine_window_set_title(slot->presentation_surface, title,
-                                            engine_error,
-                                            sizeof(engine_error));
+    status = proton_platform_window_set_title(slot->platform_window, title,
+                                              engine_error,
+                                              sizeof(engine_error));
     if (status != PROTON_OK) {
       return proton_set_engine_status(status, engine_error);
     }
@@ -1131,11 +1131,11 @@ int32_t proton_window_set_size(proton_window_handle_t window, int32_t width,
     return proton_set_error(PROTON_ERR_INVALID_ARGUMENT,
                             "width and height must be positive");
   }
-  if (slot->presentation_surface != NULL) {
+  {
     char engine_error[512] = {0};
-    status = proton_engine_window_set_size(slot->presentation_surface, width, height,
-                                           engine_error,
-                                           sizeof(engine_error));
+    status = proton_platform_window_set_size(slot->platform_window, width, height,
+                                             engine_error,
+                                             sizeof(engine_error));
     if (status != PROTON_OK) {
       return proton_set_engine_status(status, engine_error);
     }

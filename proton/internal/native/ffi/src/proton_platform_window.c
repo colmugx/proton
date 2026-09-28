@@ -77,6 +77,7 @@ int32_t proton_platform_window_materialize(
   snprintf(config.titlebar_close_label,
            sizeof(config.titlebar_close_label), "%s",
            window->titlebar_close_label);
+  config.platform_window = window;
   config.defer_presentation = 1;
   return proton_engine_window_create(runtime, &config, &window->backend,
                                      error, error_len);

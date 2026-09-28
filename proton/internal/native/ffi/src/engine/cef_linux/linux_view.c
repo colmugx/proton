@@ -108,7 +108,9 @@ void proton_engine_view_finalize_if_ready(proton_engine_view_t *view) {
 }
 
 void proton_engine_window_finalize_if_ready(proton_engine_window_t *window) {
-  if (window == NULL || !window->destroy_requested) {
+  if (window == NULL ||
+      (!window->destroy_requested &&
+       !window->detach_presentation_requested)) {
     return;
   }
   proton_browser_lifecycle_state_t browser_state =
@@ -122,6 +124,22 @@ void proton_engine_window_finalize_if_ready(proton_engine_window_t *window) {
     if (!view->finalized) {
       return;
     }
+  }
+  if (window->detach_presentation_requested &&
+      !window->destroy_requested) {
+    proton_engine_window_free_views(window);
+    proton_browser_lifecycle_clear_owner(window->browser_lifecycle);
+    window->browser_lifecycle = NULL;
+    proton_engine_bridge_host_destroy(window->bridge);
+    window->bridge = NULL;
+    proton_browser_session_destroy(window->browser_session);
+    window->browser_session = NULL;
+    free(window->draggable_regions);
+    window->draggable_regions = NULL;
+    window->draggable_region_count = 0;
+    window->draggable_regions_reported = 0;
+    window->detach_presentation_requested = 0;
+    return;
   }
   proton_engine_window_defer_free(window);
 }

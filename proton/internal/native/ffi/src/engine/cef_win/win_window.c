@@ -64,6 +64,19 @@
 #include <stdlib.h>
 #include <string.h>
 
+static HWND proton_engine_window_hwnd(const proton_engine_window_t *window) {
+  return window != NULL && window->platform != NULL
+             ? (HWND)window->platform->native_window
+             : NULL;
+}
+
+static void proton_engine_window_set_hwnd(proton_engine_window_t *window,
+                                          HWND hwnd) {
+  if (window != NULL && window->platform != NULL) {
+    window->platform->native_window = (void *)hwnd;
+  }
+}
+
 int proton_engine_browser_hwnd_is_focused(HWND browser_hwnd) {
   const HWND focused = GetFocus();
   return browser_hwnd != NULL && focused != NULL &&
@@ -214,7 +227,7 @@ static void proton_engine_window_refresh_non_client_theme(
     window->current_theme = PROTON_WINDOW_THEME_LIGHT;
     return;
   }
-  if (window->hwnd == NULL) {
+  if (proton_engine_window_hwnd(window) == NULL) {
     return;
   }
   DWORD attribute =
@@ -223,12 +236,12 @@ static void proton_engine_window_refresh_non_client_theme(
           : PROTON_DWMWA_USE_IMMERSIVE_DARK_MODE;
   const BOOL use_dark_caption =
       window->current_theme == PROTON_WINDOW_THEME_DARK;
-  (void)DwmSetWindowAttribute(window->hwnd, attribute, &use_dark_caption,
+  (void)DwmSetWindowAttribute(proton_engine_window_hwnd(window), attribute, &use_dark_caption,
                               sizeof(use_dark_caption));
   if (redraw) {
-    BOOL active = GetActiveWindow() == window->hwnd;
-    DefWindowProcW(window->hwnd, WM_NCACTIVATE, active ? FALSE : TRUE, 0);
-    DefWindowProcW(window->hwnd, WM_NCACTIVATE, active ? TRUE : FALSE, 0);
+    BOOL active = GetActiveWindow() == proton_engine_window_hwnd(window);
+    DefWindowProcW(proton_engine_window_hwnd(window), WM_NCACTIVATE, active ? FALSE : TRUE, 0);
+    DefWindowProcW(proton_engine_window_hwnd(window), WM_NCACTIVATE, active ? TRUE : FALSE, 0);
   }
 }
 
@@ -236,8 +249,10 @@ static LRESULT CALLBACK proton_engine_window_proc(HWND hwnd,
                                                   UINT msg,
                                                   WPARAM wparam,
                                                   LPARAM lparam) {
+  proton_platform_window_t *platform =
+      (proton_platform_window_t *)GetWindowLongPtrW(hwnd, GWLP_USERDATA);
   proton_engine_window_t *window =
-      (proton_engine_window_t *)GetWindowLongPtrW(hwnd, GWLP_USERDATA);
+      platform != NULL ? platform->backend : NULL;
   switch (msg) {
   case PROTON_ENGINE_WM_DESTROY_SELF:
     // Self-destruction deferred from OnBeforeClose; the owning engine window
@@ -253,10 +268,11 @@ static LRESULT CALLBACK proton_engine_window_proc(HWND hwnd,
   }
   case WM_NCCREATE: {
     CREATESTRUCTW *create = (CREATESTRUCTW *)lparam;
-    window = (proton_engine_window_t *)create->lpCreateParams;
-    if (window != NULL) {
-      window->hwnd = hwnd;
-      SetWindowLongPtrW(hwnd, GWLP_USERDATA, (LONG_PTR)window);
+    platform = (proton_platform_window_t *)create->lpCreateParams;
+    window = platform != NULL ? platform->backend : NULL;
+    if (platform != NULL) {
+      platform->native_window = (void *)hwnd;
+      SetWindowLongPtrW(hwnd, GWLP_USERDATA, (LONG_PTR)platform);
     }
     break;
   }
@@ -572,7 +588,7 @@ static LRESULT CALLBACK proton_engine_window_proc(HWND hwnd,
         EnableWindow(window->parent_hwnd, TRUE);
       }
       window->closed = 1;
-      window->hwnd = NULL;
+      proton_engine_window_set_hwnd(window, NULL);
     }
     return 0;
   default:
@@ -636,18 +652,18 @@ proton_engine_window_titlebar_area(
           window != NULL && window->zoom_percent > 0 ? window->zoom_percent
                                                      : 100,
   };
-  if (window == NULL || !window->titlebar_overlay || window->hwnd == NULL ||
+  if (window == NULL || !window->titlebar_overlay || proton_engine_window_hwnd(window) == NULL ||
       window->fullscreen) {
     return area;
   }
   RECT client = {0};
-  if (!GetClientRect(window->hwnd, &client) || client.right <= client.left ||
+  if (!GetClientRect(proton_engine_window_hwnd(window), &client) || client.right <= client.left ||
       client.bottom <= client.top) {
     return area;
   }
   RECT controls = {0};
-  if (!proton_engine_overlay_caption_buttons_rect(window->hwnd, &controls)) {
-    UINT dpi = GetDpiForWindow(window->hwnd);
+  if (!proton_engine_overlay_caption_buttons_rect(proton_engine_window_hwnd(window), &controls)) {
+    UINT dpi = GetDpiForWindow(proton_engine_window_hwnd(window));
     if (dpi == 0) {
       dpi = USER_DEFAULT_SCREEN_DPI;
     }
@@ -657,7 +673,7 @@ proton_engine_window_titlebar_area(
     controls.right = client.right;
     controls.bottom = min(
         client.bottom,
-        client.top + proton_engine_overlay_caption_band_height(window->hwnd));
+        client.top + proton_engine_overlay_caption_band_height(proton_engine_window_hwnd(window)));
   }
   controls.left = max(client.left, min(client.right, controls.left));
   controls.right = max(client.left, min(client.right, controls.right));
@@ -668,14 +684,14 @@ proton_engine_window_titlebar_area(
   int safe_height = min(
       client.bottom - client.top,
       max(controls.bottom - client.top,
-          proton_engine_overlay_caption_band_height(window->hwnd)));
+          proton_engine_overlay_caption_band_height(proton_engine_window_hwnd(window))));
   area.x = proton_engine_window_device_to_dip(
-      window->hwnd, safe_left - client.left);
+      proton_engine_window_hwnd(window), safe_left - client.left);
   area.y = 0;
   area.width = proton_engine_window_device_to_dip(
-      window->hwnd, safe_right - safe_left);
+      proton_engine_window_hwnd(window), safe_right - safe_left);
   area.height =
-      proton_engine_window_device_to_dip(window->hwnd, safe_height);
+      proton_engine_window_device_to_dip(proton_engine_window_hwnd(window), safe_height);
   return area;
 }
 
@@ -705,7 +721,7 @@ static int32_t proton_engine_window_create_browser(
     size_t error_len) {
   if (window == NULL ||
       proton_browser_lifecycle_client(window->browser_lifecycle) == NULL ||
-      (!window->headless && window->hwnd == NULL)) {
+      (!window->headless && proton_engine_window_hwnd(window) == NULL)) {
     proton_engine_set_message(error, error_len,
                               "window is not ready for browser creation");
     return PROTON_ERR_INVALID_ARGUMENT;
@@ -714,7 +730,7 @@ static int32_t proton_engine_window_create_browser(
   int browser_width = window->width;
   int browser_height = window->height;
   RECT rect = {0};
-  if (!window->headless && GetClientRect(window->hwnd, &rect)) {
+  if (!window->headless && GetClientRect(proton_engine_window_hwnd(window), &rect)) {
     browser_width = rect.right - rect.left;
     browser_height = rect.bottom - rect.top;
   }
@@ -730,7 +746,7 @@ static int32_t proton_engine_window_create_browser(
     window_info.windowless_rendering_enabled = 1;
     window_info.runtime_style = CEF_RUNTIME_STYLE_ALLOY;
   } else {
-    window_info.parent_window = window->hwnd;
+    window_info.parent_window = proton_engine_window_hwnd(window);
     window_info.style =
         WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS;
   }
@@ -796,6 +812,10 @@ int32_t proton_engine_window_create(
   if (window == NULL) {
     proton_engine_set_message(error, error_len, "failed to allocate window");
     return PROTON_ERR_ENGINE;
+  }
+  window->platform = config.platform_window;
+  if (window->platform != NULL) {
+    window->platform->backend = window;
   }
   window->width = config.width;
   window->height = config.height;
@@ -871,11 +891,12 @@ int32_t proton_engine_window_create(
     if (window->titlebar_overlay) {
       window_style |= WS_CLIPCHILDREN;
     }
-    window->hwnd = CreateWindowExW(
+    proton_engine_window_hwnd(window) = CreateWindowExW(
         0, PROTON_ENGINE_WINDOW_CLASS, wide_title, window_style, CW_USEDEFAULT,
         CW_USEDEFAULT, config.width, config.height, NULL, NULL,
-        GetModuleHandleW(NULL), window);
-    if (window->hwnd == NULL) {
+        GetModuleHandleW(NULL),
+        window->platform != NULL ? window->platform : NULL);
+    if (proton_engine_window_hwnd(window) == NULL) {
       proton_browser_lifecycle_creation_failed(window->browser_lifecycle);
       proton_browser_lifecycle_clear_owner(window->browser_lifecycle);
       proton_browser_session_destroy(window->browser_session);
@@ -887,10 +908,10 @@ int32_t proton_engine_window_create(
     /* CreateWindowEx chooses the monitor while the window is still hidden.
      * Resolve its actual DPI before showing it; CEF/Win32 use physical pixels,
      * whereas the application config and size constraints use logical pixels. */
-    if (!proton_win_initialize_geometry(window->hwnd, config.width,
+    if (!proton_win_initialize_geometry(proton_engine_window_hwnd(window), config.width,
                                          config.height, config.size_hint)) {
-      DestroyWindow(window->hwnd);
-      window->hwnd = NULL;
+      DestroyWindow(proton_engine_window_hwnd(window));
+      proton_engine_window_set_hwnd(window, NULL);
       proton_browser_lifecycle_creation_failed(window->browser_lifecycle);
       proton_browser_lifecycle_clear_owner(window->browser_lifecycle);
       proton_browser_session_destroy(window->browser_session);
@@ -902,18 +923,18 @@ int32_t proton_engine_window_create(
     }
     proton_engine_window_refresh_non_client_theme(window, 0);
     if (window->titlebar_overlay) {
-      proton_engine_overlay_apply_frame(window->hwnd);
-      SetWindowPos(window->hwnd, NULL, 0, 0, 0, 0,
+      proton_engine_overlay_apply_frame(proton_engine_window_hwnd(window));
+      SetWindowPos(proton_engine_window_hwnd(window), NULL, 0, 0, 0, 0,
                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE |
                        SWP_FRAMECHANGED);
     }
-    ShowWindow(window->hwnd, SW_SHOW);
+    ShowWindow(proton_engine_window_hwnd(window), SW_SHOW);
     if (runtime != NULL && runtime->menu_definition != NULL) {
       int32_t menu_status = proton_win_menu_apply_to_window(
           window, runtime->menu_definition, error, error_len);
       if (menu_status != PROTON_OK) {
-        DestroyWindow(window->hwnd);
-        window->hwnd = NULL;
+        DestroyWindow(proton_engine_window_hwnd(window));
+        proton_engine_window_set_hwnd(window, NULL);
         proton_browser_lifecycle_creation_failed(window->browser_lifecycle);
         proton_browser_lifecycle_clear_owner(window->browser_lifecycle);
         proton_browser_session_destroy(window->browser_session);
@@ -930,8 +951,8 @@ int32_t proton_engine_window_create(
                                             error_len);
     if (status != PROTON_OK) {
       proton_browser_lifecycle_creation_failed(window->browser_lifecycle);
-      if (window->hwnd != NULL) {
-        DestroyWindow(window->hwnd);
+      if (proton_engine_window_hwnd(window) != NULL) {
+        DestroyWindow(proton_engine_window_hwnd(window));
       }
       proton_browser_lifecycle_clear_owner(window->browser_lifecycle);
       proton_engine_bridge_host_destroy(window->bridge);
@@ -962,6 +983,10 @@ int32_t proton_engine_window_attach_presentation(
     proton_engine_set_message(error, error_len,
                               "presentation is already attached");
     return PROTON_ERR_ALREADY_INITIALIZED;
+  }
+  if (window->platform == NULL && config->platform_window != NULL) {
+    window->platform = config->platform_window;
+    window->platform->backend = window;
   }
   window->runtime = runtime;
   window->public_window_id = config->public_window;
@@ -1058,9 +1083,9 @@ int32_t proton_engine_window_destroy(proton_engine_window_t *window,
   }
   window->destroy_requested = 1;
   proton_engine_window_close_views(window);
-  if (window->hwnd != NULL) {
-    DestroyWindow(window->hwnd);
-    window->hwnd = NULL;
+  if (proton_engine_window_hwnd(window) != NULL) {
+    DestroyWindow(proton_engine_window_hwnd(window));
+    proton_engine_window_set_hwnd(window, NULL);
   }
   proton_engine_window_finalize_if_ready(window);
   return PROTON_OK;
@@ -1069,7 +1094,7 @@ int32_t proton_engine_window_destroy(proton_engine_window_t *window,
 int32_t proton_engine_window_show(proton_engine_window_t *window,
                                   char *error,
                                   size_t error_len) {
-  if (window == NULL || (!window->headless && window->hwnd == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_hwnd(window) == NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -1083,26 +1108,26 @@ int32_t proton_engine_window_show(proton_engine_window_t *window,
       }
     }
   } else {
-    ShowWindow(window->hwnd, SW_SHOW);
+    ShowWindow(proton_engine_window_hwnd(window), SW_SHOW);
   }
   return PROTON_OK;
 }
 
 int32_t proton_engine_window_show_inactive(proton_engine_window_t *window,
                                            char *error, size_t error_len) {
-  if (window == NULL || (!window->headless && window->hwnd == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_hwnd(window) == NULL)) {
     proton_engine_set_message(error, error_len, "window is required");
     return PROTON_ERR_INVALID_ARGUMENT;
   }
   if (window->headless) return proton_engine_window_show(window, error, error_len);
-  ShowWindow(window->hwnd, SW_SHOWNOACTIVATE);
+  ShowWindow(proton_engine_window_hwnd(window), SW_SHOWNOACTIVATE);
   return PROTON_OK;
 }
 
 int32_t proton_engine_window_set_minimum_size(
     proton_engine_window_t *window, int32_t width, int32_t height,
     char *error, size_t error_len) {
-  if (window == NULL || (!window->headless && window->hwnd == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_hwnd(window) == NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -1126,7 +1151,7 @@ int32_t proton_engine_window_set_minimum_size(
 int32_t proton_engine_window_set_maximum_size(
     proton_engine_window_t *window, int32_t width, int32_t height,
     char *error, size_t error_len) {
-  if (window == NULL || (!window->headless && window->hwnd == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_hwnd(window) == NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -1150,7 +1175,7 @@ int32_t proton_engine_window_set_maximum_size(
 int32_t proton_engine_window_set_aspect_ratio(
     proton_engine_window_t *window, double aspect_ratio, char *error,
     size_t error_len) {
-  if (window == NULL || (!window->headless && window->hwnd == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_hwnd(window) == NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -1172,7 +1197,7 @@ int32_t proton_engine_window_set_aspect_ratio(
 int32_t proton_engine_window_set_movable(proton_engine_window_t *window,
                                          int32_t movable, char *error,
                                          size_t error_len) {
-  if (window == NULL || (!window->headless && window->hwnd == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_hwnd(window) == NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -1194,7 +1219,7 @@ int32_t proton_engine_window_set_movable(proton_engine_window_t *window,
 int32_t proton_engine_window_set_opacity(proton_engine_window_t *window,
                                          double opacity, char *error,
                                          size_t error_len) {
-  if (window == NULL || (!window->headless && window->hwnd == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_hwnd(window) == NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -1209,16 +1234,16 @@ int32_t proton_engine_window_set_opacity(proton_engine_window_t *window,
     return PROTON_ERR_UNSUPPORTED;
   }
   const double bounded_opacity = opacity < 0.0 ? 0.0 : (opacity > 1.0 ? 1.0 : opacity);
-  LONG_PTR extended_style = GetWindowLongPtrW(window->hwnd, GWL_EXSTYLE);
+  LONG_PTR extended_style = GetWindowLongPtrW(proton_engine_window_hwnd(window), GWL_EXSTYLE);
   SetLastError(0);
-  if (SetWindowLongPtrW(window->hwnd, GWL_EXSTYLE,
+  if (SetWindowLongPtrW(proton_engine_window_hwnd(window), GWL_EXSTYLE,
                         extended_style | WS_EX_LAYERED) == 0 &&
       GetLastError() != 0) {
     proton_engine_set_message(error, error_len,
                               "failed to enable layered window opacity");
     return PROTON_ERR_PLATFORM;
   }
-  if (!SetLayeredWindowAttributes(window->hwnd, 0,
+  if (!SetLayeredWindowAttributes(proton_engine_window_hwnd(window), 0,
                                   (BYTE)(bounded_opacity * 255.0), LWA_ALPHA)) {
     proton_engine_set_message(error, error_len,
                               "failed to update window opacity");
@@ -1230,7 +1255,7 @@ int32_t proton_engine_window_set_opacity(proton_engine_window_t *window,
 int32_t proton_engine_window_set_skip_taskbar(proton_engine_window_t *window,
                                               int32_t skip, char *error,
                                               size_t error_len) {
-  if (window == NULL || (!window->headless && window->hwnd == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_hwnd(window) == NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -1253,8 +1278,8 @@ int32_t proton_engine_window_set_skip_taskbar(proton_engine_window_t *window,
   }
   hr = taskbar->lpVtbl->HrInit(taskbar);
   if (SUCCEEDED(hr)) {
-    hr = skip != 0 ? taskbar->lpVtbl->DeleteTab(taskbar, window->hwnd)
-                   : taskbar->lpVtbl->AddTab(taskbar, window->hwnd);
+    hr = skip != 0 ? taskbar->lpVtbl->DeleteTab(taskbar, proton_engine_window_hwnd(window))
+                   : taskbar->lpVtbl->AddTab(taskbar, proton_engine_window_hwnd(window));
   }
   taskbar->lpVtbl->Release(taskbar);
   if (FAILED(hr)) {
@@ -1268,7 +1293,7 @@ int32_t proton_engine_window_set_skip_taskbar(proton_engine_window_t *window,
 int32_t proton_engine_window_set_content_protection(
     proton_engine_window_t *window, int32_t enabled, char *error,
     size_t error_len) {
-  if (window == NULL || (!window->headless && window->hwnd == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_hwnd(window) == NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -1282,7 +1307,7 @@ int32_t proton_engine_window_set_content_protection(
     return PROTON_ERR_UNSUPPORTED;
   }
   const DWORD affinity = enabled ? WDA_EXCLUDEFROMCAPTURE : WDA_NONE;
-  if (!SetWindowDisplayAffinity(window->hwnd, affinity)) {
+  if (!SetWindowDisplayAffinity(proton_engine_window_hwnd(window), affinity)) {
     proton_engine_set_message(error, error_len,
                               "failed to update window display affinity");
     return PROTON_ERR_PLATFORM;
@@ -1293,7 +1318,7 @@ int32_t proton_engine_window_set_content_protection(
 int32_t proton_engine_window_set_minimizable(
     proton_engine_window_t *window, int32_t minimizable, char *error,
     size_t error_len) {
-  if (window == NULL || (!window->headless && window->hwnd == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_hwnd(window) == NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -1308,7 +1333,7 @@ int32_t proton_engine_window_set_minimizable(
   }
   DWORD style = window->fullscreen
                     ? window->windowed_style
-                    : (DWORD)GetWindowLongW(window->hwnd, GWL_STYLE);
+                    : (DWORD)GetWindowLongW(proton_engine_window_hwnd(window), GWL_STYLE);
   if (minimizable) {
     style |= WS_MINIMIZEBOX;
   } else {
@@ -1318,12 +1343,12 @@ int32_t proton_engine_window_set_minimizable(
     window->windowed_style = style;
   } else {
     SetLastError(0);
-    if (SetWindowLongW(window->hwnd, GWL_STYLE, (LONG)style) == 0 &&
+    if (SetWindowLongW(proton_engine_window_hwnd(window), GWL_STYLE, (LONG)style) == 0 &&
         GetLastError() != 0) {
       proton_engine_set_message(error, error_len, "failed to update window style");
       return PROTON_ERR_PLATFORM;
     }
-    SetWindowPos(window->hwnd, NULL, 0, 0, 0, 0,
+    SetWindowPos(proton_engine_window_hwnd(window), NULL, 0, 0, 0, 0,
                  SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE |
                      SWP_FRAMECHANGED);
   }
@@ -1334,7 +1359,7 @@ int32_t proton_engine_window_set_minimizable(
 int32_t proton_engine_window_set_maximizable(
     proton_engine_window_t *window, int32_t maximizable, char *error,
     size_t error_len) {
-  if (window == NULL || (!window->headless && window->hwnd == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_hwnd(window) == NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -1349,7 +1374,7 @@ int32_t proton_engine_window_set_maximizable(
   }
   DWORD style = window->fullscreen
                     ? window->windowed_style
-                    : (DWORD)GetWindowLongW(window->hwnd, GWL_STYLE);
+                    : (DWORD)GetWindowLongW(proton_engine_window_hwnd(window), GWL_STYLE);
   if (maximizable) {
     style |= WS_MAXIMIZEBOX;
   } else {
@@ -1359,12 +1384,12 @@ int32_t proton_engine_window_set_maximizable(
     window->windowed_style = style;
   } else {
     SetLastError(0);
-    if (SetWindowLongW(window->hwnd, GWL_STYLE, (LONG)style) == 0 &&
+    if (SetWindowLongW(proton_engine_window_hwnd(window), GWL_STYLE, (LONG)style) == 0 &&
         GetLastError() != 0) {
       proton_engine_set_message(error, error_len, "failed to update window style");
       return PROTON_ERR_PLATFORM;
     }
-    SetWindowPos(window->hwnd, NULL, 0, 0, 0, 0,
+    SetWindowPos(proton_engine_window_hwnd(window), NULL, 0, 0, 0, 0,
                  SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE |
                      SWP_FRAMECHANGED);
   }
@@ -1375,7 +1400,7 @@ int32_t proton_engine_window_set_maximizable(
 int32_t proton_engine_window_set_closable(
     proton_engine_window_t *window, int32_t closable, char *error,
     size_t error_len) {
-  if (window == NULL || (!window->headless && window->hwnd == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_hwnd(window) == NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -1388,7 +1413,7 @@ int32_t proton_engine_window_set_closable(
                               "window closability is not supported in headless mode");
     return PROTON_ERR_UNSUPPORTED;
   }
-  HMENU system_menu = GetSystemMenu(window->hwnd, FALSE);
+  HMENU system_menu = GetSystemMenu(proton_engine_window_hwnd(window), FALSE);
   if (system_menu == NULL ||
       EnableMenuItem(system_menu, SC_CLOSE,
                      MF_BYCOMMAND | (closable ? MF_ENABLED : MF_GRAYED)) ==
@@ -1397,7 +1422,7 @@ int32_t proton_engine_window_set_closable(
                               "failed to update window close control");
     return PROTON_ERR_PLATFORM;
   }
-  DrawMenuBar(window->hwnd);
+  DrawMenuBar(proton_engine_window_hwnd(window));
   window->closable = closable;
   return PROTON_OK;
 }
@@ -1428,7 +1453,7 @@ int32_t proton_engine_window_get_button_position(
 int32_t proton_engine_window_set_button_visibility(
     proton_engine_window_t *window, int32_t visible, char *error,
     size_t error_len) {
-  if (window == NULL || (!window->headless && window->hwnd == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_hwnd(window) == NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -1447,7 +1472,7 @@ int32_t proton_engine_window_set_button_visibility(
 int32_t proton_engine_window_set_focusable(
     proton_engine_window_t *window, int32_t focusable, char *error,
     size_t error_len) {
-  if (window == NULL || (!window->headless && window->hwnd == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_hwnd(window) == NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -1460,11 +1485,11 @@ int32_t proton_engine_window_set_focusable(
                               "window focusability is not supported in headless mode");
     return PROTON_ERR_UNSUPPORTED;
   }
-  LONG_PTR style = GetWindowLongPtrW(window->hwnd, GWL_EXSTYLE);
+  LONG_PTR style = GetWindowLongPtrW(proton_engine_window_hwnd(window), GWL_EXSTYLE);
   LONG_PTR updated = focusable ? (style & ~WS_EX_NOACTIVATE)
                                : (style | WS_EX_NOACTIVATE);
   SetLastError(0);
-  if (SetWindowLongPtrW(window->hwnd, GWL_EXSTYLE, updated) == 0 &&
+  if (SetWindowLongPtrW(proton_engine_window_hwnd(window), GWL_EXSTYLE, updated) == 0 &&
       GetLastError() != 0) {
     proton_engine_set_message(error, error_len,
                               "failed to update window focusability");
@@ -1477,7 +1502,7 @@ int32_t proton_engine_window_set_focusable(
 int32_t proton_engine_window_hide(proton_engine_window_t *window,
                                   char *error,
                                   size_t error_len) {
-  if (window == NULL || (!window->headless && window->hwnd == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_hwnd(window) == NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -1491,7 +1516,7 @@ int32_t proton_engine_window_hide(proton_engine_window_t *window,
       }
     }
   } else {
-    ShowWindow(window->hwnd, SW_HIDE);
+    ShowWindow(proton_engine_window_hwnd(window), SW_HIDE);
   }
   return PROTON_OK;
 }
@@ -1499,7 +1524,7 @@ int32_t proton_engine_window_hide(proton_engine_window_t *window,
 int32_t proton_engine_window_close(proton_engine_window_t *window,
                                    char *error,
                                    size_t error_len) {
-  if (window == NULL || (!window->headless && window->hwnd == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_hwnd(window) == NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -1533,7 +1558,7 @@ int32_t proton_engine_window_close(proton_engine_window_t *window,
       proton_engine_signal_wait_source(window->runtime, PROTON_WAIT_PLATFORM);
     }
   } else {
-    PostMessageW(window->hwnd, WM_CLOSE, 0, 0);
+    PostMessageW(proton_engine_window_hwnd(window), WM_CLOSE, 0, 0);
   }
   return PROTON_OK;
 }
@@ -1545,7 +1570,7 @@ int32_t proton_engine_window_is_closed(proton_engine_window_t *window) {
 int32_t proton_engine_window_focus(proton_engine_window_t *window,
                                    char *error,
                                    size_t error_len) {
-  if (window == NULL || (!window->headless && window->hwnd == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_hwnd(window) == NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -1558,8 +1583,8 @@ int32_t proton_engine_window_focus(proton_engine_window_t *window,
       }
     }
   } else {
-    SetForegroundWindow(window->hwnd);
-    SetFocus(window->hwnd);
+    SetForegroundWindow(proton_engine_window_hwnd(window));
+    SetFocus(proton_engine_window_hwnd(window));
   }
   return PROTON_OK;
 }
@@ -1568,7 +1593,7 @@ int32_t proton_engine_window_set_title(proton_engine_window_t *window,
                                        const char *title,
                                        char *error,
                                        size_t error_len) {
-  if (window == NULL || (!window->headless && window->hwnd == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_hwnd(window) == NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -1580,14 +1605,14 @@ int32_t proton_engine_window_set_title(proton_engine_window_t *window,
   wchar_t wide_title[512];
   proton_engine_utf8_to_wide(title, wide_title,
                              (int)(sizeof(wide_title) / sizeof(wide_title[0])));
-  SetWindowTextW(window->hwnd, wide_title);
+  SetWindowTextW(proton_engine_window_hwnd(window), wide_title);
   return PROTON_OK;
 }
 
 int32_t proton_engine_window_set_icon(proton_engine_window_t *window,
                                       const char *path, char *error,
                                       size_t error_len) {
-  if (window == NULL || (!window->headless && window->hwnd == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_hwnd(window) == NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -1614,8 +1639,8 @@ int32_t proton_engine_window_set_icon(proton_engine_window_t *window,
   }
   if (window->window_icon != NULL) DestroyIcon(window->window_icon);
   window->window_icon = icon;
-  SendMessageW(window->hwnd, WM_SETICON, ICON_SMALL, (LPARAM)icon);
-  SendMessageW(window->hwnd, WM_SETICON, ICON_BIG, (LPARAM)icon);
+  SendMessageW(proton_engine_window_hwnd(window), WM_SETICON, ICON_SMALL, (LPARAM)icon);
+  SendMessageW(proton_engine_window_hwnd(window), WM_SETICON, ICON_BIG, (LPARAM)icon);
   return PROTON_OK;
 }
 
@@ -1623,7 +1648,7 @@ int32_t proton_engine_window_set_parent(proton_engine_window_t *window,
                                         proton_engine_window_t *parent,
                                         int32_t modal, char *error,
                                         size_t error_len) {
-  if (window == NULL || (!window->headless && window->hwnd == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_hwnd(window) == NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -1642,7 +1667,7 @@ int32_t proton_engine_window_set_parent(proton_engine_window_t *window,
   }
   HWND parent_hwnd = parent != NULL ? parent->hwnd : NULL;
   SetLastError(0);
-  if (SetWindowLongPtrW(window->hwnd, GWLP_HWNDPARENT,
+  if (SetWindowLongPtrW(proton_engine_window_hwnd(window), GWLP_HWNDPARENT,
                         (LONG_PTR)parent_hwnd) == 0 &&
       GetLastError() != 0) {
     proton_engine_set_message(error, error_len, "failed to set window owner");
@@ -1661,7 +1686,7 @@ int32_t proton_engine_window_set_size(proton_engine_window_t *window,
                                       int32_t height,
                                       char *error,
                                       size_t error_len) {
-  if (window == NULL || (!window->headless && window->hwnd == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_hwnd(window) == NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -1677,8 +1702,8 @@ int32_t proton_engine_window_set_size(proton_engine_window_t *window,
   if (window->headless) {
     proton_engine_resize_browser(window, width, height);
   } else {
-    UINT dpi = proton_win_window_dpi(window->hwnd);
-    if (!SetWindowPos(window->hwnd, NULL, 0, 0,
+    UINT dpi = proton_win_window_dpi(proton_engine_window_hwnd(window));
+    if (!SetWindowPos(proton_engine_window_hwnd(window), NULL, 0, 0,
                        proton_win_pixels(width, dpi),
                        proton_win_pixels(height, dpi),
                        SWP_NOMOVE | SWP_NOZORDER)) {
@@ -1694,7 +1719,7 @@ int32_t proton_engine_window_set_size(proton_engine_window_t *window,
 int32_t proton_engine_window_set_content_size(
     proton_engine_window_t *window, int32_t width, int32_t height,
     char *error, size_t error_len) {
-  if (window == NULL || (!window->headless && window->hwnd == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_hwnd(window) == NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -1708,12 +1733,12 @@ int32_t proton_engine_window_set_content_size(
     proton_engine_resize_browser(window, width, height);
     return PROTON_OK;
   }
-  UINT dpi = proton_win_window_dpi(window->hwnd);
+  UINT dpi = proton_win_window_dpi(proton_engine_window_hwnd(window));
   RECT frame, client;
   /* Measure the current non-client area, including a menu and the custom
    * overlay frame. AdjustWindowRectEx would add a caption the overlay removes. */
-  if (!GetWindowRect(window->hwnd, &frame) ||
-      !GetClientRect(window->hwnd, &client)) {
+  if (!GetWindowRect(proton_engine_window_hwnd(window), &frame) ||
+      !GetClientRect(proton_engine_window_hwnd(window), &client)) {
     proton_engine_set_message(error, error_len, "failed to read window frame");
     return PROTON_ERR_PLATFORM;
   }
@@ -1731,7 +1756,7 @@ int32_t proton_engine_window_set_content_size(
   int previous_height = window->height;
   window->width = proton_win_logical(frame_width, dpi);
   window->height = proton_win_logical(frame_height, dpi);
-  if (!SetWindowPos(window->hwnd, NULL, 0, 0, frame_width, frame_height,
+  if (!SetWindowPos(proton_engine_window_hwnd(window), NULL, 0, 0, frame_width, frame_height,
                      SWP_NOMOVE | SWP_NOZORDER)) {
     window->width = previous_width;
     window->height = previous_height;
@@ -1754,11 +1779,11 @@ int32_t proton_engine_window_get_content_size(
     return PROTON_OK;
   }
   RECT rect;
-  if (!GetClientRect(window->hwnd, &rect)) {
+  if (!GetClientRect(proton_engine_window_hwnd(window), &rect)) {
     proton_engine_set_message(error, error_len, "failed to read client area");
     return PROTON_ERR_PLATFORM;
   }
-  UINT dpi = proton_win_window_dpi(window->hwnd);
+  UINT dpi = proton_win_window_dpi(proton_engine_window_hwnd(window));
   *out_width = proton_win_logical(rect.right - rect.left, dpi);
   *out_height = proton_win_logical(rect.bottom - rect.top, dpi);
   return PROTON_OK;
@@ -2032,7 +2057,7 @@ int32_t proton_engine_window_set_progress_bar(
   }
   const TBPFLAG flag = proton_engine_taskbar_progress_flag(progress, mode);
   HRESULT result =
-      taskbar->lpVtbl->SetProgressState(taskbar, window->hwnd, flag);
+      taskbar->lpVtbl->SetProgressState(taskbar, proton_engine_window_hwnd(window), flag);
   if (SUCCEEDED(result) && flag != TBPF_INDETERMINATE &&
       flag != TBPF_NOPROGRESS) {
     // SetProgressValue overrides an indeterminate state, so the value is only
@@ -2042,7 +2067,7 @@ int32_t proton_engine_window_set_progress_bar(
       value = 0;
     }
     result =
-        taskbar->lpVtbl->SetProgressValue(taskbar, window->hwnd, (ULONGLONG)value,
+        taskbar->lpVtbl->SetProgressValue(taskbar, proton_engine_window_hwnd(window), (ULONGLONG)value,
                                           100);
   }
   taskbar->lpVtbl->Release(taskbar);
@@ -2057,7 +2082,7 @@ int32_t proton_engine_window_set_progress_bar(
 int32_t proton_engine_window_set_overlay_icon(
     proton_engine_window_t *window, proton_engine_image_t *overlay,
     const char *description, char *error, size_t error_len) {
-  if (window == NULL || (!window->headless && window->hwnd == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_hwnd(window) == NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -2088,7 +2113,7 @@ int32_t proton_engine_window_set_overlay_icon(
   // The taskbar copies the icon, so it is released as soon as the call
   // returns, the same lifetime rule Electron applies.
   HRESULT result =
-      taskbar->lpVtbl->SetOverlayIcon(taskbar, window->hwnd, icon,
+      taskbar->lpVtbl->SetOverlayIcon(taskbar, proton_engine_window_hwnd(window), icon,
                                       wide_description);
   taskbar->lpVtbl->Release(taskbar);
   if (icon != NULL) {
@@ -2105,7 +2130,7 @@ int32_t proton_engine_window_set_overlay_icon(
 int32_t proton_engine_window_set_thumbnail_tooltip(
     proton_engine_window_t *window, const char *tooltip, char *error,
     size_t error_len) {
-  if (window == NULL || (!window->headless && window->hwnd == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_hwnd(window) == NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -2124,7 +2149,7 @@ int32_t proton_engine_window_set_thumbnail_tooltip(
     return PROTON_ERR_PLATFORM;
   }
   HRESULT result =
-      taskbar->lpVtbl->SetThumbnailTooltip(taskbar, window->hwnd,
+      taskbar->lpVtbl->SetThumbnailTooltip(taskbar, proton_engine_window_hwnd(window),
                                            wide_tooltip);
   taskbar->lpVtbl->Release(taskbar);
   if (FAILED(result)) {
@@ -2208,7 +2233,7 @@ int32_t proton_engine_window_set_thumbar_buttons(
     return PROTON_ERR_INVALID_ARGUMENT;
   }
   *out_applied = 0;
-  if (window == NULL || (!window->headless && window->hwnd == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_hwnd(window) == NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -2305,9 +2330,9 @@ int32_t proton_engine_window_set_thumbar_buttons(
   HRESULT result =
       window->thumbar_buttons_added
           ? taskbar->lpVtbl->ThumbBarUpdateButtons(
-                taskbar, window->hwnd, PROTON_THUMBAR_MAX_BUTTONS, entries)
+                taskbar, proton_engine_window_hwnd(window), PROTON_THUMBAR_MAX_BUTTONS, entries)
           : taskbar->lpVtbl->ThumbBarAddButtons(
-                taskbar, window->hwnd, PROTON_THUMBAR_MAX_BUTTONS, entries);
+                taskbar, proton_engine_window_hwnd(window), PROTON_THUMBAR_MAX_BUTTONS, entries);
   taskbar->lpVtbl->Release(taskbar);
   for (int32_t index = 0; index < button_count; index++) {
     if (icons[index] != NULL) {
@@ -2334,7 +2359,7 @@ int32_t proton_engine_window_set_thumbar_buttons(
 int32_t proton_engine_window_flash_frame(
     proton_engine_window_t *window, int32_t flash, char *error,
     size_t error_len) {
-  if (window == NULL || (!window->headless && window->hwnd == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_hwnd(window) == NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_ARGUMENT;
   }
@@ -2350,7 +2375,7 @@ int32_t proton_engine_window_flash_frame(
   }
   FLASHWINFO info = {
       .cbSize = sizeof(info),
-      .hwnd = window->hwnd,
+      .hwnd = proton_engine_window_hwnd(window),
       .dwFlags = flash ? (FLASHW_ALL | FLASHW_TIMERNOFG) : FLASHW_STOP,
       .uCount = 0,
       .dwTimeout = 0,
@@ -2365,7 +2390,7 @@ int32_t proton_engine_window_apply(
     char *error,
     size_t error_len) {
   if (window == NULL || action == NULL ||
-      (!window->headless && window->hwnd == NULL)) {
+      (!window->headless && proton_engine_window_hwnd(window) == NULL)) {
     proton_engine_set_message(error, error_len,
                               "window and action are required");
     return PROTON_ERR_INVALID_ARGUMENT;
@@ -2397,22 +2422,22 @@ int32_t proton_engine_window_apply(
   }
   switch (action->kind) {
   case PROTON_ENGINE_WINDOW_MINIMIZE:
-    ShowWindow(window->hwnd, SW_MINIMIZE);
+    ShowWindow(proton_engine_window_hwnd(window), SW_MINIMIZE);
     break;
   case PROTON_ENGINE_WINDOW_MAXIMIZE:
-    ShowWindow(window->hwnd, SW_MAXIMIZE);
+    ShowWindow(proton_engine_window_hwnd(window), SW_MAXIMIZE);
     break;
   case PROTON_ENGINE_WINDOW_RESTORE:
     if (window->fullscreen) {
-      SetWindowLongW(window->hwnd, GWL_STYLE,
+      SetWindowLongW(proton_engine_window_hwnd(window), GWL_STYLE,
                      (LONG)window->windowed_style);
-      SetWindowPlacement(window->hwnd, &window->windowed_placement);
-      SetWindowPos(window->hwnd, NULL, 0, 0, 0, 0,
+      SetWindowPlacement(proton_engine_window_hwnd(window), &window->windowed_placement);
+      SetWindowPos(proton_engine_window_hwnd(window), NULL, 0, 0, 0, 0,
                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
                        SWP_NOACTIVATE | SWP_FRAMECHANGED);
       window->fullscreen = 0;
     }
-    ShowWindow(window->hwnd, SW_RESTORE);
+    ShowWindow(proton_engine_window_hwnd(window), SW_RESTORE);
     break;
   case PROTON_ENGINE_WINDOW_SET_FULLSCREEN:
   case PROTON_ENGINE_WINDOW_SET_KIOSK:
@@ -2420,42 +2445,42 @@ int32_t proton_engine_window_apply(
         !window->fullscreenable && action->value != 0) break;
     if (action->value != 0 && !window->fullscreen) {
       window->windowed_style =
-          (DWORD)GetWindowLongW(window->hwnd, GWL_STYLE);
+          (DWORD)GetWindowLongW(proton_engine_window_hwnd(window), GWL_STYLE);
       window->windowed_placement.length = sizeof(WINDOWPLACEMENT);
-      GetWindowPlacement(window->hwnd, &window->windowed_placement);
+      GetWindowPlacement(proton_engine_window_hwnd(window), &window->windowed_placement);
       HMONITOR monitor =
-          MonitorFromWindow(window->hwnd, MONITOR_DEFAULTTONEAREST);
+          MonitorFromWindow(proton_engine_window_hwnd(window), MONITOR_DEFAULTTONEAREST);
       MONITORINFO info = {.cbSize = sizeof(MONITORINFO)};
       if (monitor == NULL || !GetMonitorInfoW(monitor, &info)) {
         proton_engine_set_message(error, error_len,
                                   "failed to read monitor geometry");
         return PROTON_ERR_PLATFORM;
       }
-      SetWindowLongW(window->hwnd, GWL_STYLE,
+      SetWindowLongW(proton_engine_window_hwnd(window), GWL_STYLE,
                      (LONG)(window->windowed_style &
                             ~WS_OVERLAPPEDWINDOW));
-      SetWindowPos(window->hwnd, HWND_TOP, info.rcMonitor.left,
+      SetWindowPos(proton_engine_window_hwnd(window), HWND_TOP, info.rcMonitor.left,
                    info.rcMonitor.top,
                    info.rcMonitor.right - info.rcMonitor.left,
                    info.rcMonitor.bottom - info.rcMonitor.top,
                    SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
       window->fullscreen = 1;
     } else if (action->value == 0 && window->fullscreen) {
-      SetWindowLongW(window->hwnd, GWL_STYLE,
+      SetWindowLongW(proton_engine_window_hwnd(window), GWL_STYLE,
                      (LONG)window->windowed_style);
-      SetWindowPlacement(window->hwnd, &window->windowed_placement);
-      SetWindowPos(window->hwnd, NULL, 0, 0, 0, 0,
+      SetWindowPlacement(proton_engine_window_hwnd(window), &window->windowed_placement);
+      SetWindowPos(proton_engine_window_hwnd(window), NULL, 0, 0, 0, 0,
                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
                        SWP_NOACTIVATE | SWP_FRAMECHANGED);
       window->fullscreen = 0;
     }
     break;
   case PROTON_ENGINE_WINDOW_SET_POSITION:
-    SetWindowPos(window->hwnd, NULL, action->x, action->y, 0, 0,
+    SetWindowPos(proton_engine_window_hwnd(window), NULL, action->x, action->y, 0, 0,
                  SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
     break;
   case PROTON_ENGINE_WINDOW_SET_ALWAYS_ON_TOP:
-    SetWindowPos(window->hwnd,
+    SetWindowPos(proton_engine_window_hwnd(window),
                  action->value != 0 ? HWND_TOPMOST : HWND_NOTOPMOST,
                  0, 0, 0, 0,
                  SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
@@ -2466,18 +2491,18 @@ int32_t proton_engine_window_apply(
       RECT frame;
       if (window->fullscreen) {
         frame = window->windowed_placement.rcNormalPosition;
-      } else if (!GetWindowRect(window->hwnd, &frame)) {
+      } else if (!GetWindowRect(proton_engine_window_hwnd(window), &frame)) {
         proton_engine_set_message(error, error_len,
                                   "failed to read current window frame");
         return PROTON_ERR_PLATFORM;
       }
-      UINT dpi = proton_win_window_dpi(window->hwnd);
+      UINT dpi = proton_win_window_dpi(proton_engine_window_hwnd(window));
       window->width = proton_win_logical(frame.right - frame.left, dpi);
       window->height = proton_win_logical(frame.bottom - frame.top, dpi);
     }
     DWORD style = window->fullscreen
                       ? window->windowed_style
-                      : (DWORD)GetWindowLongW(window->hwnd, GWL_STYLE);
+                      : (DWORD)GetWindowLongW(proton_engine_window_hwnd(window), GWL_STYLE);
     if (action->value != 0) {
       style |= WS_THICKFRAME;
       if (window->maximizable) {
@@ -2492,13 +2517,13 @@ int32_t proton_engine_window_apply(
       window->windowed_style = style;
     } else {
       SetLastError(0);
-      if (SetWindowLongW(window->hwnd, GWL_STYLE, (LONG)style) == 0 &&
+      if (SetWindowLongW(proton_engine_window_hwnd(window), GWL_STYLE, (LONG)style) == 0 &&
           GetLastError() != 0) {
         proton_engine_set_message(error, error_len,
                                   "failed to update window style");
         return PROTON_ERR_PLATFORM;
       }
-      SetWindowPos(window->hwnd, NULL, 0, 0, 0, 0,
+      SetWindowPos(proton_engine_window_hwnd(window), NULL, 0, 0, 0, 0,
                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE |
                        SWP_FRAMECHANGED);
     }
@@ -2516,7 +2541,7 @@ int32_t proton_engine_window_apply(
 int32_t proton_engine_window_set_fullscreenable(
     proton_engine_window_t *window, int32_t fullscreenable, char *error,
     size_t error_len) {
-  if (window == NULL || (!window->headless && window->hwnd == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_hwnd(window) == NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -2537,7 +2562,7 @@ int32_t proton_engine_window_set_fullscreenable(
 int32_t proton_engine_window_set_has_shadow(
     proton_engine_window_t *window, int32_t has_shadow, char *error,
     size_t error_len) {
-  if (window == NULL || (!window->headless && window->hwnd == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_hwnd(window) == NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -2556,7 +2581,7 @@ int32_t proton_engine_window_set_has_shadow(
 int32_t proton_engine_window_set_ignore_mouse_events(
     proton_engine_window_t *window, int32_t ignore, int32_t forward,
     char *error, size_t error_len) {
-  if (window == NULL || (!window->headless && window->hwnd == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_hwnd(window) == NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -2570,10 +2595,10 @@ int32_t proton_engine_window_set_ignore_mouse_events(
                               "mouse event handling is not supported in headless mode");
     return PROTON_ERR_UNSUPPORTED;
   }
-  LONG_PTR style = GetWindowLongPtrW(window->hwnd, GWL_EXSTYLE);
+  LONG_PTR style = GetWindowLongPtrW(proton_engine_window_hwnd(window), GWL_EXSTYLE);
   if (ignore) style |= WS_EX_TRANSPARENT;
   else style &= ~WS_EX_TRANSPARENT;
-  if (SetWindowLongPtrW(window->hwnd, GWL_EXSTYLE, style) == 0 &&
+  if (SetWindowLongPtrW(proton_engine_window_hwnd(window), GWL_EXSTYLE, style) == 0 &&
       GetLastError() != 0) {
     proton_engine_set_message(error, error_len,
                               "failed to update mouse event handling");
@@ -2581,7 +2606,7 @@ int32_t proton_engine_window_set_ignore_mouse_events(
   }
   window->ignore_mouse_events = ignore;
   window->ignore_mouse_forward = ignore ? forward : 0;
-  SetWindowPos(window->hwnd, NULL, 0, 0, 0, 0,
+  SetWindowPos(proton_engine_window_hwnd(window), NULL, 0, 0, 0, 0,
                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE |
                    SWP_FRAMECHANGED);
   return PROTON_OK;
@@ -2590,7 +2615,7 @@ int32_t proton_engine_window_set_ignore_mouse_events(
 int32_t proton_engine_window_set_background_color(
     proton_engine_window_t *window, uint32_t color, char *error,
     size_t error_len) {
-  if (window == NULL || (!window->headless && window->hwnd == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_hwnd(window) == NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -2608,7 +2633,7 @@ int32_t proton_engine_window_set_background_color(
     return PROTON_ERR_PLATFORM;
   }
   SetLastError(ERROR_SUCCESS);
-  if (SetClassLongPtrW(window->hwnd, GCLP_HBRBACKGROUND, (LONG_PTR)brush) == 0 &&
+  if (SetClassLongPtrW(proton_engine_window_hwnd(window), GCLP_HBRBACKGROUND, (LONG_PTR)brush) == 0 &&
       GetLastError() != ERROR_SUCCESS) {
     DeleteObject(brush);
     window->background_brush = NULL;
@@ -2618,7 +2643,7 @@ int32_t proton_engine_window_set_background_color(
   }
   if (window->background_brush != NULL) DeleteObject(window->background_brush);
   window->background_brush = brush;
-  InvalidateRect(window->hwnd, NULL, TRUE);
+  InvalidateRect(proton_engine_window_hwnd(window), NULL, TRUE);
   return PROTON_OK;
 }
 
@@ -2626,7 +2651,7 @@ int32_t proton_engine_window_set_theme(
     proton_engine_window_t *window,
     proton_window_theme_preference_t theme_preference, char *error,
     size_t error_len) {
-  if (window == NULL || (!window->headless && window->hwnd == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_hwnd(window) == NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -2652,7 +2677,7 @@ int32_t proton_engine_window_set_theme(
 int32_t proton_engine_window_set_visible_on_all_workspaces(
     proton_engine_window_t *window, int32_t visible, char *error,
     size_t error_len) {
-  if (window == NULL || (!window->headless && window->hwnd == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_hwnd(window) == NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -2673,7 +2698,7 @@ int32_t proton_engine_window_set_visible_on_all_workspaces(
 int32_t proton_engine_window_set_enabled(proton_engine_window_t *window,
                                          int32_t enabled, char *error,
                                          size_t error_len) {
-  if (window == NULL || (!window->headless && window->hwnd == NULL)) {
+  if (window == NULL || (!window->headless && proton_engine_window_hwnd(window) == NULL)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -2682,7 +2707,7 @@ int32_t proton_engine_window_set_enabled(proton_engine_window_t *window,
     return PROTON_ERR_INVALID_ARGUMENT;
   }
   if (window->headless) return PROTON_OK;
-  EnableWindow(window->hwnd, enabled != 0);
+  EnableWindow(proton_engine_window_hwnd(window), enabled != 0);
   window->enabled = enabled;
   return PROTON_OK;
 }
@@ -2707,21 +2732,21 @@ int32_t proton_engine_window_get_state(
     out_state->visible = !window->headless_hidden;
     return PROTON_OK;
   }
-  if (window->hwnd == NULL) {
+  if (proton_engine_window_hwnd(window) == NULL) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
   RECT frame = {0};
-  GetWindowRect(window->hwnd, &frame);
+  GetWindowRect(proton_engine_window_hwnd(window), &frame);
   HMONITOR monitor =
-      MonitorFromWindow(window->hwnd, MONITOR_DEFAULTTONEAREST);
+      MonitorFromWindow(proton_engine_window_hwnd(window), MONITOR_DEFAULTTONEAREST);
   MONITORINFO info = {.cbSize = sizeof(MONITORINFO)};
   if (monitor != NULL) {
     GetMonitorInfoW(monitor, &info);
   }
   out_state->x = frame.left;
   out_state->y = frame.top;
-  UINT dpi = proton_win_window_dpi(window->hwnd);
+  UINT dpi = proton_win_window_dpi(proton_engine_window_hwnd(window));
   out_state->width = proton_win_logical(frame.right - frame.left, dpi);
   out_state->height = proton_win_logical(frame.bottom - frame.top, dpi);
   out_state->monitor_x = info.rcMonitor.left;
@@ -2734,10 +2759,10 @@ int32_t proton_engine_window_get_state(
   out_state->work_height = info.rcWork.bottom - info.rcWork.top;
   out_state->scale_factor_percent =
       dpi > 0 ? (int32_t)((dpi * 100 + 48) / 96) : 100;
-  out_state->visible = IsWindowVisible(window->hwnd) ? 1 : 0;
-  out_state->focused = GetForegroundWindow() == window->hwnd ? 1 : 0;
-  out_state->minimized = IsIconic(window->hwnd) ? 1 : 0;
-  out_state->maximized = IsZoomed(window->hwnd) ? 1 : 0;
+  out_state->visible = IsWindowVisible(proton_engine_window_hwnd(window)) ? 1 : 0;
+  out_state->focused = GetForegroundWindow() == proton_engine_window_hwnd(window) ? 1 : 0;
+  out_state->minimized = IsIconic(proton_engine_window_hwnd(window)) ? 1 : 0;
+  out_state->maximized = IsZoomed(proton_engine_window_hwnd(window)) ? 1 : 0;
   out_state->fullscreen = window->fullscreen;
   out_state->always_on_top = window->always_on_top;
   out_state->theme = window->current_theme;
@@ -2780,8 +2805,8 @@ int32_t proton_engine_window_respond_close_request(
     if (window->headless) {
       return proton_engine_window_close(window, error, error_len);
     }
-    if (window->hwnd != NULL) {
-      PostMessageW(window->hwnd, WM_CLOSE, 0, 0);
+    if (proton_engine_window_hwnd(window) != NULL) {
+      PostMessageW(proton_engine_window_hwnd(window), WM_CLOSE, 0, 0);
     }
   } else if (!allow) {
     window->close_authorized = 0;

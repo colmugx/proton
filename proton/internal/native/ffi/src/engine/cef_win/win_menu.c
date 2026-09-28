@@ -32,9 +32,9 @@ static int32_t proton_win_menu_append_definition(
 void proton_win_menu_cleanup_window(proton_engine_window_t *window) {
   if (window == NULL) return;
   if (window->app_menu != NULL) {
-    if (window->hwnd != NULL) {
-      SetMenu(window->hwnd, NULL);
-      DrawMenuBar(window->hwnd);
+    if (proton_engine_window_hwnd(window) != NULL) {
+      SetMenu(proton_engine_window_hwnd(window), NULL);
+      DrawMenuBar(proton_engine_window_hwnd(window));
     }
     DestroyMenu(window->app_menu);
   }
@@ -49,7 +49,7 @@ void proton_win_menu_cleanup_window(proton_engine_window_t *window) {
 int32_t proton_win_menu_apply_to_window(
     proton_engine_window_t *window, const proton_menu_bar_t *menu_bar,
     char *error, size_t error_len) {
-  if (window == NULL || window->hwnd == NULL || menu_bar == NULL) {
+  if (window == NULL || proton_engine_window_hwnd(window) == NULL || menu_bar == NULL) {
     proton_engine_set_message(error, error_len,
                               "window and menu definition are required");
     return PROTON_ERR_INVALID_ARGUMENT;
@@ -115,7 +115,7 @@ int32_t proton_win_menu_apply_to_window(
       return status;
     }
   }
-  if (!SetMenu(window->hwnd, menu)) {
+  if (!SetMenu(proton_engine_window_hwnd(window), menu)) {
     proton_menu_bar_destroy(definition);
     DestroyMenu(menu);
     free(builder.bindings);
@@ -133,7 +133,7 @@ int32_t proton_win_menu_apply_to_window(
   if (old_menu != NULL) DestroyMenu(old_menu);
   proton_menu_bar_destroy(old_definition);
   free(old_bindings);
-  DrawMenuBar(window->hwnd);
+  DrawMenuBar(proton_engine_window_hwnd(window));
   return PROTON_OK;
 }
 
@@ -153,7 +153,7 @@ int32_t proton_engine_runtime_set_menu(
   }
   for (proton_engine_window_t *window = proton_engine_windows_head();
        window != NULL; window = window->next) {
-    if (window->runtime != runtime || window->hwnd == NULL) continue;
+    if (window->runtime != runtime || proton_engine_window_hwnd(window) == NULL) continue;
     int32_t status = proton_win_menu_apply_to_window(
         window, definition, error, error_len);
     if (status != PROTON_OK) {
@@ -375,13 +375,13 @@ static void proton_win_menu_publish_quit(void) {
 
 static void proton_win_menu_apply_role(proton_engine_window_t *window,
                                         const char *role) {
-  if (window == NULL || window->hwnd == NULL || role == NULL) {
+  if (window == NULL || proton_engine_window_hwnd(window) == NULL || role == NULL) {
     return;
   }
   if (strcmp(role, "quit") == 0) {
     proton_win_menu_publish_quit();
   } else if (strcmp(role, "hide") == 0) {
-    ShowWindow(window->hwnd, SW_HIDE);
+    ShowWindow(proton_engine_window_hwnd(window), SW_HIDE);
   } else if (strcmp(role, "hide_others") == 0) {
     for (proton_engine_window_t *candidate = proton_engine_windows_head();
          candidate != NULL; candidate = candidate->next) {
@@ -398,12 +398,12 @@ static void proton_win_menu_apply_role(proton_engine_window_t *window,
       }
     }
   } else if (strcmp(role, "close") == 0) {
-    PostMessageW(window->hwnd, WM_CLOSE, 0, 0);
+    PostMessageW(proton_engine_window_hwnd(window), WM_CLOSE, 0, 0);
   } else if (strcmp(role, "minimize") == 0) {
-    ShowWindow(window->hwnd, SW_MINIMIZE);
+    ShowWindow(proton_engine_window_hwnd(window), SW_MINIMIZE);
   } else if (strcmp(role, "zoom") == 0) {
-    ShowWindow(window->hwnd,
-               IsZoomed(window->hwnd) ? SW_RESTORE : SW_MAXIMIZE);
+    ShowWindow(proton_engine_window_hwnd(window),
+               IsZoomed(proton_engine_window_hwnd(window)) ? SW_RESTORE : SW_MAXIMIZE);
   } else {
     proton_win_menu_apply_edit_role(window, role);
   }
@@ -465,7 +465,7 @@ int32_t proton_engine_window_popup_menu(
                               "popup menu requires at least one menu");
     return PROTON_ERR_INVALID_ARGUMENT;
   }
-  if (window->hwnd == NULL || proton_engine_window_browser(window) == NULL) {
+  if (proton_engine_window_hwnd(window) == NULL || proton_engine_window_browser(window) == NULL) {
     proton_engine_set_message(error, error_len,
                               "window is not ready for a popup menu");
     return PROTON_ERR_INVALID_ARGUMENT;
@@ -486,7 +486,7 @@ int32_t proton_engine_window_popup_menu(
     return status;
   }
 
-  UINT dpi = GetDpiForWindow(window->hwnd);
+  UINT dpi = GetDpiForWindow(proton_engine_window_hwnd(window));
   if (dpi == 0) {
     dpi = USER_DEFAULT_SCREEN_DPI;
   }
@@ -496,19 +496,19 @@ int32_t proton_engine_window_popup_menu(
       .x = MulDiv(x, (int)dpi, USER_DEFAULT_SCREEN_DPI),
       .y = MulDiv(y, (int)dpi, USER_DEFAULT_SCREEN_DPI),
   };
-  if (!ClientToScreen(window->hwnd, &point)) {
+  if (!ClientToScreen(proton_engine_window_hwnd(window), &point)) {
     DestroyMenu(popup);
     free(builder.bindings);
     proton_engine_set_message(error, error_len,
                               "failed to translate popup coordinates");
     return PROTON_ERR_PLATFORM;
   }
-  SetForegroundWindow(window->hwnd);
+  SetForegroundWindow(proton_engine_window_hwnd(window));
   UINT selected_id = TrackPopupMenuEx(
       popup, TPM_LEFTALIGN | TPM_TOPALIGN | TPM_RIGHTBUTTON | TPM_RETURNCMD |
           TPM_NONOTIFY | TPM_WORKAREA,
-      point.x, point.y, window->hwnd, NULL);
-  PostMessageW(window->hwnd, WM_NULL, 0, 0);
+      point.x, point.y, proton_engine_window_hwnd(window), NULL);
+  PostMessageW(proton_engine_window_hwnd(window), WM_NULL, 0, 0);
   proton_win_menu_dispatch(window, &builder, selected_id);
   DestroyMenu(popup);
   free(builder.bindings);

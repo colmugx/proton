@@ -564,6 +564,7 @@ pub extern "C" fn cef_surface_attach(
   web_request_config : WebRequestConfigHandle,
 ) -> Int = "proton_internal_cef_surface_attach"
 
+///|
 pub extern "C" fn cef_surface_detach(
   window : WindowHandle,
 ) -> Int = "proton_internal_cef_surface_detach"

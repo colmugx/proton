@@ -89,4 +89,85 @@ PROTON_INTERNAL int32_t proton_platform_window_get_state(
     proton_platform_window_t *window, proton_engine_window_state_t *out_state,
     char *error, size_t error_len);
 
+PROTON_INTERNAL int32_t proton_platform_window_set_minimum_size(
+    proton_platform_window_t *window, int32_t width, int32_t height,
+    char *error, size_t error_len);
+PROTON_INTERNAL int32_t proton_platform_window_set_maximum_size(
+    proton_platform_window_t *window, int32_t width, int32_t height,
+    char *error, size_t error_len);
+PROTON_INTERNAL int32_t proton_platform_window_set_aspect_ratio(
+    proton_platform_window_t *window, double aspect_ratio, char *error,
+    size_t error_len);
+PROTON_INTERNAL int32_t proton_platform_window_set_movable(
+    proton_platform_window_t *window, int32_t movable, char *error,
+    size_t error_len);
+PROTON_INTERNAL int32_t proton_platform_window_set_opacity(
+    proton_platform_window_t *window, double opacity, char *error,
+    size_t error_len);
+PROTON_INTERNAL int32_t proton_platform_window_set_skip_taskbar(
+    proton_platform_window_t *window, int32_t skip, char *error,
+    size_t error_len);
+PROTON_INTERNAL int32_t proton_platform_window_set_content_protection(
+    proton_platform_window_t *window, int32_t enabled, char *error,
+    size_t error_len);
+PROTON_INTERNAL int32_t proton_platform_window_set_minimizable(
+    proton_platform_window_t *window, int32_t minimizable, char *error,
+    size_t error_len);
+PROTON_INTERNAL int32_t proton_platform_window_set_maximizable(
+    proton_platform_window_t *window, int32_t maximizable, char *error,
+    size_t error_len);
+PROTON_INTERNAL int32_t proton_platform_window_set_closable(
+    proton_platform_window_t *window, int32_t closable, char *error,
+    size_t error_len);
+PROTON_INTERNAL int32_t proton_platform_window_set_button_position(
+    proton_platform_window_t *window, int32_t custom, int32_t x, int32_t y,
+    char *error, size_t error_len);
+PROTON_INTERNAL int32_t proton_platform_window_get_button_position(
+    proton_platform_window_t *window, int32_t *custom, int32_t *x, int32_t *y,
+    char *error, size_t error_len);
+PROTON_INTERNAL int32_t proton_platform_window_set_button_visibility(
+    proton_platform_window_t *window, int32_t visible, char *error,
+    size_t error_len);
+PROTON_INTERNAL int32_t proton_platform_window_set_focusable(
+    proton_platform_window_t *window, int32_t focusable, char *error,
+    size_t error_len);
+PROTON_INTERNAL int32_t proton_platform_window_set_fullscreenable(
+    proton_platform_window_t *window, int32_t fullscreenable, char *error,
+    size_t error_len);
+PROTON_INTERNAL int32_t proton_platform_window_set_has_shadow(
+    proton_platform_window_t *window, int32_t has_shadow, char *error,
+    size_t error_len);
+PROTON_INTERNAL int32_t proton_platform_window_set_ignore_mouse_events(
+    proton_platform_window_t *window, int32_t ignore, int32_t forward,
+    char *error, size_t error_len);
+PROTON_INTERNAL int32_t proton_platform_window_set_background_color(
+    proton_platform_window_t *window, uint32_t color, char *error,
+    size_t error_len);
+PROTON_INTERNAL int32_t proton_platform_window_set_theme(
+    proton_platform_window_t *window,
+    proton_window_theme_preference_t theme_preference, char *error,
+    size_t error_len);
+PROTON_INTERNAL int32_t proton_platform_window_set_visible_on_all_workspaces(
+    proton_platform_window_t *window, int32_t visible, char *error,
+    size_t error_len);
+PROTON_INTERNAL int32_t proton_platform_window_set_enabled(
+    proton_platform_window_t *window, int32_t enabled, char *error,
+    size_t error_len);
+PROTON_INTERNAL int32_t proton_platform_window_set_progress_bar(
+    proton_platform_window_t *window, double progress, int32_t mode,
+    char *error, size_t error_len);
+PROTON_INTERNAL int32_t proton_platform_window_set_overlay_icon(
+    proton_platform_window_t *window, proton_engine_image_t *overlay,
+    const char *description, char *error, size_t error_len);
+PROTON_INTERNAL int32_t proton_platform_window_set_thumbnail_tooltip(
+    proton_platform_window_t *window, const char *tooltip, char *error,
+    size_t error_len);
+PROTON_INTERNAL int32_t proton_platform_window_set_thumbar_buttons(
+    proton_platform_window_t *window,
+    const proton_engine_thumbar_button_t *buttons, int32_t button_count,
+    int32_t *out_applied, char *error, size_t error_len);
+PROTON_INTERNAL int32_t proton_platform_window_flash_frame(
+    proton_platform_window_t *window, int32_t flash, char *error,
+    size_t error_len);
+
 #endif

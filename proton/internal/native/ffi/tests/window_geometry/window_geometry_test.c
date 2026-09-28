@@ -4,6 +4,7 @@
 
 #include "../../src/engine/cef_win/win_geometry.h"
 #include "../../src/engine/cef_win/win_internal.h"
+#include "../../src/proton_platform_window.h"
 
 /* Return the failing C line to the MoonBit assertion, preserving fixture
  * cleanup. */
@@ -14,6 +15,18 @@
       goto cleanup;                                                            \
     }                                                                          \
   } while (0)
+
+
+static void proton_test_bind_platform_window(proton_platform_window_t *platform,
+                                             proton_engine_window_t *window,
+                                             HWND hwnd) {
+  memset(platform, 0, sizeof(*platform));
+  memset(window, 0, sizeof(*window));
+  platform->backend = window;
+  platform->native_window = (void *)hwnd;
+  window->platform = platform;
+}
+
 
 /* Exercise the production view layout against real child HWNDs. */
 int32_t proton_test_view_native_bounds(void) {
@@ -30,9 +43,10 @@ int32_t proton_test_view_native_bounds(void) {
                               0, 0, 1, 1, parent, NULL,
                               GetModuleHandleW(NULL), NULL);
   CHECK(child != NULL);
+  proton_platform_window_t platform = {0};
   proton_engine_window_t window = {0};
   proton_engine_view_t view = {0};
-  window.hwnd = parent;
+  proton_test_bind_platform_window(&platform, &window, parent);
   window.views = &view;
   view.window = &window;
   view.hwnd = child;
@@ -179,9 +193,10 @@ int32_t proton_test_view_caption_clip(void) {
   HWND child = CreateWindowExW(0, L"STATIC", L"View", WS_CHILD,
                               0, 0, 1, 1, parent, NULL, instance, NULL);
   CHECK(child != NULL);
+  proton_platform_window_t platform = {0};
   proton_engine_window_t window = {0};
   proton_engine_view_t view = {0};
-  window.hwnd = parent;
+  proton_test_bind_platform_window(&platform, &window, parent);
   window.titlebar_overlay = 1;
   window.views = &view;
   view.window = &window;
@@ -256,8 +271,9 @@ int32_t proton_test_window_native_sizes(int32_t overlay) {
   CHECK(frame.left >= info.rcWork.left && frame.right <= info.rcWork.right);
   CHECK(frame.top >= info.rcWork.top && frame.bottom <= info.rcWork.bottom);
 
+  proton_platform_window_t platform = {0};
   proton_engine_window_t window = {0};
-  window.hwnd = hwnd;
+  proton_test_bind_platform_window(&platform, &window, hwnd);
   window.resizable = 1;
   window.titlebar_overlay = overlay;
   char error[256] = {0};
@@ -308,14 +324,16 @@ int32_t proton_test_window_dpi_change(void) {
   CHECK(previous != NULL);
   proton_engine_register_window_class();
 
+  proton_platform_window_t platform = {0};
   proton_engine_window_t window = {0};
+  proton_test_bind_platform_window(&platform, &window, NULL);
   window.resizable = 1;
   hwnd = CreateWindowExW(0, PROTON_ENGINE_WINDOW_CLASS,
                          L"Proton DPI change test", WS_OVERLAPPEDWINDOW,
                          CW_USEDEFAULT, CW_USEDEFAULT, 400, 300, NULL, NULL,
-                         GetModuleHandleW(NULL), &window);
+                         GetModuleHandleW(NULL), &platform);
   CHECK(hwnd != NULL);
-  CHECK(window.hwnd == hwnd);
+  CHECK((HWND)platform.native_window == hwnd);
   window.width = 1120;
   window.height = 760;
 
@@ -422,7 +440,9 @@ int32_t proton_test_titlebar_native_hit_test(void) {
   CHECK(window_class != 0);
   proton_win_titlebar_region_t regions[] = {
       {0, 0, 600, 46, 1}, {14, 9, 28, 28, 0}};
+  proton_platform_window_t platform = {0};
   proton_engine_window_t window = {0};
+  proton_test_bind_platform_window(&platform, &window, NULL);
   window.titlebar_overlay = 1;
   window.draggable_regions_reported = 1;
   window.draggable_regions = regions;
@@ -431,7 +451,7 @@ int32_t proton_test_titlebar_native_hit_test(void) {
                          WS_OVERLAPPEDWINDOW, 100, 100, 900, 400, NULL, NULL,
                          instance, &window);
   CHECK(hwnd != NULL);
-  window.hwnd = hwnd;
+  platform.native_window = (void *)hwnd;
   CHECK(!IsWindowVisible(hwnd));
   const UINT dpi = GetDpiForWindow(hwnd);
   CHECK(dpi >= USER_DEFAULT_SCREEN_DPI);
@@ -469,8 +489,12 @@ int32_t proton_test_closed_modal_window_collection(void) {
   HWND parent = NULL;
   HWND modal = NULL;
   HMENU menu = NULL;
+  proton_platform_window_t *platform = calloc(1, sizeof(*platform));
+  CHECK(platform != NULL);
   proton_engine_window_t *window = calloc(1, sizeof(*window));
   CHECK(window != NULL);
+  platform->backend = window;
+  window->platform = platform;
   CHECK(proton_engine_closed_windows_ready_for_shutdown());
   parent = CreateWindowExW(0, L"STATIC", L"Modal parent test",
                            WS_OVERLAPPEDWINDOW, 0, 0, 400, 300, NULL, NULL,
@@ -479,7 +503,7 @@ int32_t proton_test_closed_modal_window_collection(void) {
   proton_engine_register_window_class();
   modal = CreateWindowExW(0, PROTON_ENGINE_WINDOW_CLASS, L"Modal cleanup test",
                           WS_OVERLAPPEDWINDOW, 0, 0, 200, 100, parent, NULL,
-                          GetModuleHandleW(NULL), window);
+                          GetModuleHandleW(NULL), platform);
   CHECK(modal != NULL);
   CHECK(!IsWindowVisible(modal));
   window->parent_hwnd = parent;
@@ -497,7 +521,7 @@ int32_t proton_test_closed_modal_window_collection(void) {
   proton_engine_free_closed_windows();
   // Do not dereference window until retention has been established: the old
   // collector freed it and cleared GWLP_USERDATA at this point.
-  CHECK(GetWindowLongPtrW(modal, GWLP_USERDATA) == (LONG_PTR)window);
+  CHECK(GetWindowLongPtrW(modal, GWLP_USERDATA) == (LONG_PTR)platform);
   CHECK(!proton_engine_closed_windows_ready_for_shutdown());
   CHECK(IsWindow(modal));
   CHECK(!IsWindowEnabled(parent));
@@ -507,7 +531,7 @@ int32_t proton_test_closed_modal_window_collection(void) {
   DispatchMessageW(&message);
   CHECK(!IsWindow(modal));
   CHECK(IsWindowEnabled(parent));
-  CHECK(window->hwnd == NULL);
+  CHECK(platform->native_window == NULL);
   CHECK(window->app_menu == NULL);
   CHECK(!IsMenu(menu));
   CHECK(window->window_icon == NULL);
@@ -515,12 +539,49 @@ int32_t proton_test_closed_modal_window_collection(void) {
 cleanup:
   if (modal != NULL && IsWindow(modal)) DestroyWindow(modal);
   if (queued) {
+    proton_platform_window_free(platform);
     proton_engine_free_closed_windows();
+    platform = NULL;
   } else {
     free(window);
+    free(platform);
+    platform = NULL;
   }
   if (menu != NULL && IsMenu(menu)) DestroyMenu(menu);
   if (parent != NULL) DestroyWindow(parent);
+  return result;
+}
+
+
+int32_t proton_test_platform_window_without_presentation(void) {
+  int result = 0;
+  char error[512] = {0};
+  proton_platform_window_t *platform = proton_platform_window_alloc();
+  CHECK(platform != NULL);
+  CHECK(proton_platform_window_configure(
+            platform, "Platform-only window", 480, 320, 0, 0,
+            PROTON_WINDOW_THEME_PREFERENCE_SYSTEM, 0, 0, 0,
+            "", "", "", "") == PROTON_OK);
+  CHECK(proton_platform_window_materialize(platform, NULL, 991, error,
+                                           sizeof(error)) == PROTON_OK);
+  CHECK(platform->backend != NULL);
+  CHECK(platform->native_window != NULL);
+  CHECK(proton_platform_window_set_title(platform, "Platform-only renamed",
+                                         error, sizeof(error)) == PROTON_OK);
+  CHECK(proton_platform_window_set_size(platform, 520, 360, error,
+                                        sizeof(error)) == PROTON_OK);
+  CHECK(proton_platform_window_hide(platform, error, sizeof(error)) == PROTON_OK);
+  CHECK(proton_platform_window_show(platform, error, sizeof(error)) == PROTON_OK);
+cleanup:
+  if (platform != NULL) {
+    if (platform->backend != NULL) {
+      (void)proton_platform_window_destroy_shell(platform, error, sizeof(error));
+      proton_platform_window_free(platform);
+      proton_engine_free_closed_windows();
+    } else {
+      proton_platform_window_free(platform);
+    }
+  }
   return result;
 }
 

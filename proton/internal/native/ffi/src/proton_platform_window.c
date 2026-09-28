@@ -17,6 +17,9 @@ extern int32_t proton_platform_mac_window_show(void *native_window,
 extern int32_t proton_platform_mac_window_hide(void *native_window,
                                                char *error,
                                                size_t error_len);
+extern int32_t proton_platform_mac_window_focus(void *native_window,
+                                                char *error,
+                                                size_t error_len);
 extern int32_t proton_platform_mac_window_set_title(void *native_window,
                                                     const char *title,
                                                     char *error,
@@ -69,6 +72,29 @@ static int32_t proton_platform_window_native_hide(
 #elif defined(__APPLE__)
   return proton_platform_mac_window_hide(window->native_window, error,
                                          error_len);
+#else
+  (void)error;
+  (void)error_len;
+  return PROTON_ERR_UNSUPPORTED;
+#endif
+}
+
+static int32_t proton_platform_window_native_focus(
+    proton_platform_window_t *window, char *error, size_t error_len) {
+  if (window == NULL || window->native_window == NULL) {
+    return PROTON_ERR_UNSUPPORTED;
+  }
+#if defined(_WIN32)
+  HWND hwnd = (HWND)window->native_window;
+  (void)SetForegroundWindow(hwnd);
+  SetFocus(hwnd);
+  return PROTON_OK;
+#elif defined(__linux__)
+  gtk_window_present(GTK_WINDOW(window->native_window));
+  return PROTON_OK;
+#elif defined(__APPLE__)
+  return proton_platform_mac_window_focus(window->native_window, error,
+                                          error_len);
 #else
   (void)error;
   (void)error_len;
@@ -313,6 +339,9 @@ int32_t proton_platform_window_hide(proton_platform_window_t *window,
 
 int32_t proton_platform_window_focus(proton_platform_window_t *window,
                                      char *error, size_t error_len) {
+  if (window != NULL && window->native_window != NULL) {
+    return proton_platform_window_native_focus(window, error, error_len);
+  }
   return window == NULL || window->backend == NULL
              ? PROTON_OK
              : proton_engine_window_focus(window->backend, error, error_len);

@@ -243,6 +243,8 @@ int32_t proton_engine_window_attach_presentation(
     proton_engine_window_t *window, proton_engine_runtime_t *runtime,
     const proton_engine_window_config_t *config, char *error,
     size_t error_len);
+int32_t proton_engine_window_detach_presentation(
+    proton_engine_window_t *window, char *error, size_t error_len);
 int32_t proton_engine_window_destroy(proton_engine_window_t *window,
                                      char *error,
                                      size_t error_len);

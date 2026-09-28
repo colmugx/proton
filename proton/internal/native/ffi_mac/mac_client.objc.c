@@ -265,12 +265,12 @@ static void CEF_CALLBACK proton_engine_on_after_created(
     }
     host->base.release((cef_base_ref_counted_t *)host);
   }
-  if (window->content_view != nil && window->browser_view != nil &&
+  if (proton_engine_window_content_view(window) != nil && window->browser_view != nil &&
       window->browser_view.superview == nil) {
-    [window->content_view addSubview:window->browser_view];
+    [proton_engine_window_content_view(window) addSubview:window->browser_view];
   }
-  if (window->content_view != nil && window->browser_view != nil) {
-    [window->browser_view setFrame:window->content_view.bounds];
+  if (proton_engine_window_content_view(window) != nil && window->browser_view != nil) {
+    [window->browser_view setFrame:proton_engine_window_content_view(window).bounds];
     [window->browser_view setAutoresizingMask:NSViewWidthSizable |
                                           NSViewHeightSizable];
   }

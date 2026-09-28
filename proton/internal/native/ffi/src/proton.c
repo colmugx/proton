@@ -918,7 +918,13 @@ int32_t proton_internal_window_create(
       download_policy, certificate_policy, media_policy, devtools,
       bridge_config, web_request_config);
   if (status != PROTON_OK) {
-    proton_window_slot_destroy(*out_window);
+    proton_window_slot_t *slot = NULL;
+    if (proton_get_window(*out_window, &slot) == PROTON_OK) {
+      char engine_error[512] = {0};
+      (void)proton_platform_window_destroy_shell(
+          slot->platform_window, engine_error, sizeof(engine_error));
+      proton_window_slot_destroy(*out_window);
+    }
     *out_window = PROTON_INVALID_HANDLE;
   }
   return status;

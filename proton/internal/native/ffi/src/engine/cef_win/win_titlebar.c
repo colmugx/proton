@@ -430,8 +430,10 @@ LRESULT proton_engine_overlay_hit_test(HWND hwnd, LPARAM lparam) {
   const int client_left = client_origin.x - window_rect.left;
   const int client_top = client_origin.y - window_rect.top;
   RECT drag_strip = {0};
+  proton_platform_window_t *platform =
+      (proton_platform_window_t *)GetWindowLongPtrW(hwnd, GWLP_USERDATA);
   proton_engine_window_t *window =
-      (proton_engine_window_t *)GetWindowLongPtrW(hwnd, GWLP_USERDATA);
+      platform != NULL ? platform->backend : NULL;
   if (window == NULL || !window->draggable_regions_reported) {
     (void)proton_engine_overlay_drag_strip_rect(hwnd, &drag_strip);
   }

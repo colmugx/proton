@@ -74,6 +74,7 @@ static inline void proton_engine_window_set_hwnd(
     proton_engine_window_t *window, HWND hwnd) {
   if (window != NULL && window->platform != NULL) {
     window->platform->native_window = (void *)hwnd;
+    window->platform->content_host = (void *)hwnd;
   }
 }
 

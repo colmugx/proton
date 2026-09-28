@@ -1034,40 +1034,42 @@ int32_t proton_engine_window_create(
     window->fullscreenable = 1;
     window->enabled = 1;
     window->headless = runtime->headless;
-    window->bridge = proton_engine_bridge_host_create(
-        runtime, config.public_window, config.bridge_config);
-    window->browser_session = proton_browser_session_create(
-        &config.browser_policy, config.web_request_config,
-        proton_engine_browser_signal, NULL);
-    window->browser_lifecycle = proton_browser_lifecycle_create(
-        runtime->browsers, PROTON_BROWSER_ROLE_MAIN, window, NULL);
-    if (window->bridge == NULL || window->browser_session == NULL ||
-        window->browser_lifecycle == NULL) {
-      proton_browser_lifecycle_creation_failed(window->browser_lifecycle);
-      proton_engine_bridge_host_destroy(window->bridge);
-      proton_browser_session_destroy(window->browser_session);
-      free(window);
-      proton_engine_set_message(error, error_len,
-                                "failed to allocate browser state");
-      return PROTON_ERR_ENGINE;
+    if (!config.defer_presentation) {
+      window->bridge = proton_engine_bridge_host_create(
+          runtime, config.public_window, config.bridge_config);
+      window->browser_session = proton_browser_session_create(
+          &config.browser_policy, config.web_request_config,
+          proton_engine_browser_signal, NULL);
+      window->browser_lifecycle = proton_browser_lifecycle_create(
+          runtime->browsers, PROTON_BROWSER_ROLE_MAIN, window, NULL);
+      if (window->bridge == NULL || window->browser_session == NULL ||
+          window->browser_lifecycle == NULL) {
+        proton_browser_lifecycle_creation_failed(window->browser_lifecycle);
+        proton_engine_bridge_host_destroy(window->bridge);
+        proton_browser_session_destroy(window->browser_session);
+        free(window);
+        proton_engine_set_message(error, error_len,
+                                  "failed to allocate browser state");
+        return PROTON_ERR_ENGINE;
+      }
+      proton_browser_session_bind_window(window->browser_session,
+                                         config.public_window);
+      proton_browser_session_bind_lifecycle(window->browser_session,
+                                            window->browser_lifecycle);
+      proton_engine_client_t *client = proton_engine_client_create(
+          window->browser_lifecycle, config.web_request_config);
+      if (client == NULL) {
+        proton_browser_lifecycle_creation_failed(window->browser_lifecycle);
+        proton_browser_lifecycle_clear_owner(window->browser_lifecycle);
+        proton_browser_session_destroy(window->browser_session);
+        proton_engine_bridge_host_destroy(window->bridge);
+        free(window);
+        proton_engine_set_message(error, error_len, "failed to allocate client");
+        return PROTON_ERR_ENGINE;
+      }
+      proton_browser_lifecycle_set_client(window->browser_lifecycle,
+                                          &client->client);
     }
-    proton_browser_session_bind_window(window->browser_session,
-                                       config.public_window);
-    proton_browser_session_bind_lifecycle(window->browser_session,
-                                          window->browser_lifecycle);
-    proton_engine_client_t *client = proton_engine_client_create(
-        window->browser_lifecycle, config.web_request_config);
-    if (client == NULL) {
-      proton_browser_lifecycle_creation_failed(window->browser_lifecycle);
-      proton_browser_lifecycle_clear_owner(window->browser_lifecycle);
-      proton_browser_session_destroy(window->browser_session);
-      proton_engine_bridge_host_destroy(window->bridge);
-      free(window);
-      proton_engine_set_message(error, error_len, "failed to allocate client");
-      return PROTON_ERR_ENGINE;
-    }
-    proton_browser_lifecycle_set_client(window->browser_lifecycle,
-                                        &client->client);
 
     ProtonWindowDelegate *delegate = nil;
     if (!window->headless) {
@@ -1129,29 +1131,113 @@ int32_t proton_engine_window_create(
       [window->window layoutIfNeeded];
     }
 
-    window->initial_url =
-        proton_engine_strdup(config.initial_url[0] != '\0' ? config.initial_url
-                                                           : "about:blank");
-    if (window->initial_url == NULL) {
-      if (window->window != nil) {
-        [window->window close];
+    if (!config.defer_presentation) {
+      window->initial_url =
+          proton_engine_strdup(config.initial_url[0] != '\0' ? config.initial_url
+                                                             : "about:blank");
+      if (window->initial_url == NULL) {
+        if (window->window != nil) {
+          [window->window close];
+        }
+        if (delegate != nil) {
+          [delegate release];
+        }
+        proton_browser_lifecycle_creation_failed(window->browser_lifecycle);
+        proton_browser_lifecycle_clear_owner(window->browser_lifecycle);
+        proton_browser_session_destroy(window->browser_session);
+        proton_engine_bridge_host_destroy(window->bridge);
+        free(window);
+        proton_engine_set_message(error, error_len,
+                                  "failed to copy initial browser url");
+        return PROTON_ERR_ENGINE;
       }
-      if (delegate != nil) {
-        [delegate release];
-      }
+      window->browser_create_pending = 1;
+      proton_engine_window_list_add(window);
+      proton_engine_signal_wait_source(PROTON_WAIT_PLATFORM);
+      *out_window = window;
+      return PROTON_OK;    } else {
+      proton_engine_window_list_add(window);
+      *out_window = window;
+      return PROTON_OK;
+    }
+  }
+}
+
+
+int32_t proton_engine_window_attach_presentation(
+    proton_engine_window_t *window, proton_engine_runtime_t *runtime,
+    const proton_engine_window_config_t *config, char *error,
+    size_t error_len) {
+  @autoreleasepool {
+    if (window == NULL || runtime == NULL || config == NULL) {
+      proton_engine_set_message(error, error_len,
+                                "window, runtime, and config are required");
+      return PROTON_ERR_INVALID_ARGUMENT;
+    }
+    if (window->browser_lifecycle != NULL || window->browser_session != NULL ||
+        window->bridge != NULL) {
+      proton_engine_set_message(error, error_len,
+                                "presentation is already attached");
+      return PROTON_ERR_ALREADY_INITIALIZED;
+    }
+    window->runtime = runtime;
+    window->public_window_id = config->public_window;
+    window->bridge = proton_engine_bridge_host_create(
+        runtime, config->public_window, config->bridge_config);
+    window->browser_session = proton_browser_session_create(
+        &config->browser_policy, config->web_request_config,
+        proton_engine_browser_signal, NULL);
+    window->browser_lifecycle = proton_browser_lifecycle_create(
+        runtime->browsers, PROTON_BROWSER_ROLE_MAIN, window, NULL);
+    if (window->bridge == NULL || window->browser_session == NULL ||
+        window->browser_lifecycle == NULL) {
+      proton_browser_lifecycle_creation_failed(window->browser_lifecycle);
+      proton_engine_bridge_host_destroy(window->bridge);
+      window->bridge = NULL;
+      proton_browser_session_destroy(window->browser_session);
+      window->browser_session = NULL;
+      window->browser_lifecycle = NULL;
+      proton_engine_set_message(error, error_len,
+                                "failed to allocate browser state");
+      return PROTON_ERR_ENGINE;
+    }
+    proton_browser_session_bind_window(window->browser_session,
+                                       config->public_window);
+    proton_browser_session_bind_lifecycle(window->browser_session,
+                                          window->browser_lifecycle);
+    proton_engine_client_t *client = proton_engine_client_create(
+        window->browser_lifecycle, config->web_request_config);
+    if (client == NULL) {
       proton_browser_lifecycle_creation_failed(window->browser_lifecycle);
       proton_browser_lifecycle_clear_owner(window->browser_lifecycle);
+      window->browser_lifecycle = NULL;
       proton_browser_session_destroy(window->browser_session);
+      window->browser_session = NULL;
       proton_engine_bridge_host_destroy(window->bridge);
-      free(window);
+      window->bridge = NULL;
+      proton_engine_set_message(error, error_len, "failed to allocate client");
+      return PROTON_ERR_ENGINE;
+    }
+    proton_browser_lifecycle_set_client(window->browser_lifecycle,
+                                        &client->client);
+    window->initial_url =
+        proton_engine_strdup(config->initial_url[0] != '\0'
+                                 ? config->initial_url
+                                 : "about:blank");
+    if (window->initial_url == NULL) {
+      proton_browser_lifecycle_creation_failed(window->browser_lifecycle);
+      proton_browser_lifecycle_clear_owner(window->browser_lifecycle);
+      window->browser_lifecycle = NULL;
+      proton_browser_session_destroy(window->browser_session);
+      window->browser_session = NULL;
+      proton_engine_bridge_host_destroy(window->bridge);
+      window->bridge = NULL;
       proton_engine_set_message(error, error_len,
                                 "failed to copy initial browser url");
       return PROTON_ERR_ENGINE;
     }
     window->browser_create_pending = 1;
-    proton_engine_window_list_add(window);
     proton_engine_signal_wait_source(PROTON_WAIT_PLATFORM);
-    *out_window = window;
     return PROTON_OK;
   }
 }

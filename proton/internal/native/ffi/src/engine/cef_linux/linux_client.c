@@ -349,8 +349,8 @@ static void CEF_CALLBACK proton_engine_on_before_close(
       return;
     }
     proton_engine_window_mark_closed(window);
-    if (window->window != NULL) {
-      gtk_widget_destroy(window->window);
+    if (proton_engine_window_native_widget(window) != NULL) {
+      gtk_widget_destroy(proton_engine_window_native_widget(window));
     }
     proton_engine_window_finalize_if_ready(window);
   }

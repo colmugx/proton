@@ -523,8 +523,8 @@ int32_t proton_engine_window_popup_menu(
                               "popup menu requires at least one menu");
     return PROTON_ERR_INVALID_ARGUMENT;
   }
-  if (proton_engine_window_native_widget(window) == NULL || window->browser_host == NULL ||
-      gtk_widget_get_window(window->browser_host) == NULL) {
+  if (proton_engine_window_native_widget(window) == NULL || proton_engine_window_content_host(window) == NULL ||
+      gtk_widget_get_window(proton_engine_window_content_host(window)) == NULL) {
     proton_engine_set_message(error, error_len,
                               "window is not ready for a popup menu");
     return PROTON_ERR_INVALID_ARGUMENT;
@@ -548,7 +548,7 @@ int32_t proton_engine_window_popup_menu(
       .height = 1,
   };
   gtk_menu_popup_at_rect(GTK_MENU(popup),
-                         gtk_widget_get_window(window->browser_host), &anchor,
+                         gtk_widget_get_window(proton_engine_window_content_host(window)), &anchor,
                          GDK_GRAVITY_NORTH_WEST, GDK_GRAVITY_NORTH_WEST, NULL);
   return PROTON_OK;
 }

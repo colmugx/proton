@@ -515,7 +515,7 @@ void proton_engine_window_unlock(void) {
 }
 
 cef_browser_t *proton_engine_window_browser(proton_engine_window_t *window) {
-  return window != NULL
+  return window != NULL && window->browser_lifecycle != NULL
              ? proton_browser_lifecycle_browser(window->browser_lifecycle)
              : NULL;
 }

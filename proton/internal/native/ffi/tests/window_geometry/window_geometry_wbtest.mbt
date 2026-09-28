@@ -119,3 +119,13 @@ extern "C" fn platform_window_without_presentation_test() -> Int =
 test "platform window lifecycle works without a CEF presentation runtime" {
   assert_eq(platform_window_without_presentation_test(), 0)
 }
+
+
+///|
+extern "C" fn platform_window_cross_platform_canary() -> Int =
+  "proton_test_platform_window_cross_platform_canary"
+
+///|
+test "platform window owns a real native shell without any CEF runtime" {
+  assert_eq(platform_window_cross_platform_canary(), 0)
+}

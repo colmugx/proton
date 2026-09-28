@@ -121,6 +121,6 @@ pub fn attach_surface(
     config.web_request_config,
   )
   @presentation.Surface::{
-    destroy: fn() { @native_ffi.proton_window_destroy_ffi(platform) },
+    destroy: fn() { @native_ffi.cef_surface_detach(platform) },
   }
 }

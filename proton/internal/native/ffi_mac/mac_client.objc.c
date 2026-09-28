@@ -336,8 +336,8 @@ static void CEF_CALLBACK proton_engine_on_before_close(
       return;
     }
     proton_engine_window_mark_closed(window);
-    if (window->window != nil && !window->appkit_closing) {
-      [window->window close];
+    if (proton_engine_window_native_window(window) != nil && !window->appkit_closing) {
+      [proton_engine_window_native_window(window) close];
     }
     proton_engine_window_finalize_if_ready(window);
   }

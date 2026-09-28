@@ -81,6 +81,20 @@ static inline void proton_engine_window_set_native_widget(
   }
 }
 
+static inline GtkWidget *proton_engine_window_content_host(
+    const proton_engine_window_t *window) {
+  return window != NULL && window->platform != NULL
+             ? (GtkWidget *)window->platform->content_host
+             : NULL;
+}
+
+static inline void proton_engine_window_set_content_host(
+    proton_engine_window_t *window, GtkWidget *host) {
+  if (window != NULL && window->platform != NULL) {
+    window->platform->content_host = (void *)host;
+  }
+}
+
 struct proton_engine_window {
   proton_platform_window_t *platform;
   proton_engine_runtime_t *runtime;
@@ -88,7 +102,6 @@ struct proton_engine_window {
   GtkWidget *menu_bar;
   GtkAccelGroup *menu_accel_group;
   GtkWidget *overlay;
-  GtkWidget *browser_host;
   GtkWidget *overlay_controls;
   GtkWidget *minimize_button;
   GtkWidget *maximize_button;

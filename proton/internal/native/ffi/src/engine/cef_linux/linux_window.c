@@ -954,6 +954,29 @@ int32_t proton_engine_window_attach_presentation(
   return PROTON_OK;
 }
 
+int32_t proton_engine_window_detach_presentation(
+    proton_engine_window_t *window, char *error, size_t error_len) {
+  if (window == NULL) {
+    proton_engine_set_message(error, error_len, "window is required");
+    return PROTON_ERR_INVALID_ARGUMENT;
+  }
+  if (window->browser_lifecycle == NULL) {
+    return PROTON_OK;
+  }
+  window->detach_presentation_requested = 1;
+  proton_engine_window_close_views(window);
+  if (proton_engine_window_browser(window) != NULL) {
+    proton_engine_bridge_pending_remove_browser(
+        window->runtime,
+        proton_browser_lifecycle_browser_id(window->browser_lifecycle));
+    proton_browser_lifecycle_request_close(window->browser_lifecycle, 1);
+  } else {
+    proton_browser_lifecycle_creation_failed(window->browser_lifecycle);
+    proton_engine_window_finalize_if_ready(window);
+  }
+  return PROTON_OK;
+}
+
 int32_t proton_engine_window_destroy(proton_engine_window_t *window,
                                      char *error,
                                      size_t error_len) {

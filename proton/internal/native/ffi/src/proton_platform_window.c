@@ -116,6 +116,7 @@ void proton_platform_window_backend_finalized(
   }
   window->backend = NULL;
   window->native_window = NULL;
+  window->content_host = NULL;
   if (window->release_pending) {
     free(window);
   }
@@ -124,6 +125,14 @@ void proton_platform_window_backend_finalized(
 proton_engine_window_t *proton_platform_window_backend(
     proton_platform_window_t *window) {
   return window == NULL ? NULL : window->backend;
+}
+
+void *proton_platform_window_native_handle(proton_platform_window_t *window) {
+  return window == NULL ? NULL : window->native_window;
+}
+
+void *proton_platform_window_content_host(proton_platform_window_t *window) {
+  return window == NULL ? NULL : window->content_host;
 }
 
 int32_t proton_platform_window_show(proton_platform_window_t *window,

@@ -701,6 +701,7 @@ static void proton_engine_window_free_storage(
   proton_engine_bridge_host_destroy(window->bridge);
   proton_browser_session_destroy(window->browser_session);
   free(window->draggable_regions);
+  proton_platform_window_backend_finalized(window->platform, window);
   free(window);
 }
 

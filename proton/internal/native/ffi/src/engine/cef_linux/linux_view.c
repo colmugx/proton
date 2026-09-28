@@ -328,8 +328,8 @@ static int32_t proton_engine_view_create_browser(
   window_info.size = sizeof(window_info);
   browser_settings.size = sizeof(browser_settings);
   if (!window->headless &&
-      (window->browser_host == NULL ||
-       gtk_widget_get_window(window->browser_host) == NULL)) {
+      (proton_engine_window_content_host(window) == NULL ||
+       gtk_widget_get_window(proton_engine_window_content_host(window)) == NULL)) {
     proton_engine_set_message(error, error_len,
                               "window is not ready for view browser creation");
     return PROTON_ERR_INVALID_ARGUMENT;
@@ -338,7 +338,7 @@ static int32_t proton_engine_view_create_browser(
     window_info.windowless_rendering_enabled = 1;
     window_info.runtime_style = CEF_RUNTIME_STYLE_ALLOY;
   } else {
-    GdkWindow *host_gdk_window = gtk_widget_get_window(window->browser_host);
+    GdkWindow *host_gdk_window = gtk_widget_get_window(proton_engine_window_content_host(window));
     view->display = GDK_WINDOW_XDISPLAY(host_gdk_window);
     window_info.parent_window =
         (cef_window_handle_t)GDK_WINDOW_XID(host_gdk_window);

@@ -4,6 +4,151 @@
 #include <stdlib.h>
 #include <string.h>
 
+#if defined(_WIN32)
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#elif defined(__linux__)
+#include <gtk/gtk.h>
+#elif defined(__APPLE__)
+extern int32_t proton_platform_mac_window_show(void *native_window,
+                                               int32_t inactive,
+                                               char *error,
+                                               size_t error_len);
+extern int32_t proton_platform_mac_window_hide(void *native_window,
+                                               char *error,
+                                               size_t error_len);
+extern int32_t proton_platform_mac_window_set_title(void *native_window,
+                                                    const char *title,
+                                                    char *error,
+                                                    size_t error_len);
+extern int32_t proton_platform_mac_window_set_size(void *native_window,
+                                                   int32_t width,
+                                                   int32_t height,
+                                                   char *error,
+                                                   size_t error_len);
+#endif
+
+static int32_t proton_platform_window_native_show(
+    proton_platform_window_t *window, int32_t inactive, char *error,
+    size_t error_len) {
+  if (window == NULL || window->native_window == NULL) {
+    return PROTON_ERR_UNSUPPORTED;
+  }
+#if defined(_WIN32)
+  ShowWindow((HWND)window->native_window, inactive ? SW_SHOWNOACTIVATE : SW_SHOW);
+  return PROTON_OK;
+#elif defined(__linux__)
+  GtkWidget *native = (GtkWidget *)window->native_window;
+  gtk_widget_show_all(native);
+  if (!inactive) {
+    gtk_window_present(GTK_WINDOW(native));
+  }
+  return PROTON_OK;
+#elif defined(__APPLE__)
+  return proton_platform_mac_window_show(window->native_window, inactive,
+                                         error, error_len);
+#else
+  (void)inactive;
+  (void)error;
+  (void)error_len;
+  return PROTON_ERR_UNSUPPORTED;
+#endif
+}
+
+static int32_t proton_platform_window_native_hide(
+    proton_platform_window_t *window, char *error, size_t error_len) {
+  if (window == NULL || window->native_window == NULL) {
+    return PROTON_ERR_UNSUPPORTED;
+  }
+#if defined(_WIN32)
+  ShowWindow((HWND)window->native_window, SW_HIDE);
+  return PROTON_OK;
+#elif defined(__linux__)
+  gtk_widget_hide((GtkWidget *)window->native_window);
+  return PROTON_OK;
+#elif defined(__APPLE__)
+  return proton_platform_mac_window_hide(window->native_window, error,
+                                         error_len);
+#else
+  (void)error;
+  (void)error_len;
+  return PROTON_ERR_UNSUPPORTED;
+#endif
+}
+
+static int32_t proton_platform_window_native_set_title(
+    proton_platform_window_t *window, const char *title, char *error,
+    size_t error_len) {
+  if (window == NULL || window->native_window == NULL) {
+    return PROTON_ERR_UNSUPPORTED;
+  }
+  const char *value = title != NULL ? title : "";
+#if defined(_WIN32)
+  wchar_t wide_title[512];
+  int written = MultiByteToWideChar(CP_UTF8, 0, value, -1, wide_title,
+                                    (int)(sizeof(wide_title) /
+                                          sizeof(wide_title[0])));
+  if (written <= 0 ||
+      !SetWindowTextW((HWND)window->native_window, wide_title)) {
+    if (error != NULL && error_len > 0) {
+      snprintf(error, error_len, "failed to set window title");
+    }
+    return PROTON_ERR_PLATFORM;
+  }
+  return PROTON_OK;
+#elif defined(__linux__)
+  gtk_window_set_title(GTK_WINDOW(window->native_window), value);
+  return PROTON_OK;
+#elif defined(__APPLE__)
+  return proton_platform_mac_window_set_title(window->native_window, value,
+                                              error, error_len);
+#else
+  (void)error;
+  (void)error_len;
+  return PROTON_ERR_UNSUPPORTED;
+#endif
+}
+
+static int32_t proton_platform_window_native_set_size(
+    proton_platform_window_t *window, int32_t width, int32_t height,
+    char *error, size_t error_len) {
+  if (window == NULL || window->native_window == NULL) {
+    return PROTON_ERR_UNSUPPORTED;
+  }
+  if (width <= 0 || height <= 0) {
+    if (error != NULL && error_len > 0) {
+      snprintf(error, error_len, "width and height must be positive");
+    }
+    return PROTON_ERR_INVALID_ARGUMENT;
+  }
+#if defined(_WIN32)
+  HWND hwnd = (HWND)window->native_window;
+  UINT dpi = GetDpiForWindow(hwnd);
+  if (dpi == 0) {
+    dpi = 96;
+  }
+  if (!SetWindowPos(hwnd, NULL, 0, 0, MulDiv(width, dpi, 96),
+                    MulDiv(height, dpi, 96),
+                    SWP_NOMOVE | SWP_NOZORDER)) {
+    if (error != NULL && error_len > 0) {
+      snprintf(error, error_len, "failed to resize window");
+    }
+    return PROTON_ERR_PLATFORM;
+  }
+  return PROTON_OK;
+#elif defined(__linux__)
+  gtk_window_resize(GTK_WINDOW(window->native_window), width, height);
+  return PROTON_OK;
+#elif defined(__APPLE__)
+  return proton_platform_mac_window_set_size(window->native_window, width,
+                                             height, error, error_len);
+#else
+  (void)error;
+  (void)error_len;
+  return PROTON_ERR_UNSUPPORTED;
+#endif
+}
+
 proton_platform_window_t *proton_platform_window_alloc(void) {
   return (proton_platform_window_t *)calloc(1, sizeof(proton_platform_window_t));
 }
@@ -137,6 +282,9 @@ void *proton_platform_window_content_host(proton_platform_window_t *window) {
 
 int32_t proton_platform_window_show(proton_platform_window_t *window,
                                     char *error, size_t error_len) {
+  if (window != NULL && window->native_window != NULL) {
+    return proton_platform_window_native_show(window, 0, error, error_len);
+  }
   return window == NULL || window->backend == NULL
              ? PROTON_OK
              : proton_engine_window_show(window->backend, error, error_len);
@@ -144,6 +292,9 @@ int32_t proton_platform_window_show(proton_platform_window_t *window,
 
 int32_t proton_platform_window_show_inactive(proton_platform_window_t *window,
                                              char *error, size_t error_len) {
+  if (window != NULL && window->native_window != NULL) {
+    return proton_platform_window_native_show(window, 1, error, error_len);
+  }
   return window == NULL || window->backend == NULL
              ? PROTON_OK
              : proton_engine_window_show_inactive(window->backend, error,
@@ -152,6 +303,9 @@ int32_t proton_platform_window_show_inactive(proton_platform_window_t *window,
 
 int32_t proton_platform_window_hide(proton_platform_window_t *window,
                                     char *error, size_t error_len) {
+  if (window != NULL && window->native_window != NULL) {
+    return proton_platform_window_native_hide(window, error, error_len);
+  }
   return window == NULL || window->backend == NULL
              ? PROTON_OK
              : proton_engine_window_hide(window->backend, error, error_len);
@@ -167,6 +321,15 @@ int32_t proton_platform_window_focus(proton_platform_window_t *window,
 int32_t proton_platform_window_set_title(proton_platform_window_t *window,
                                          const char *title, char *error,
                                          size_t error_len) {
+  if (window != NULL && window->native_window != NULL) {
+    int32_t status =
+        proton_platform_window_native_set_title(window, title, error, error_len);
+    if (status == PROTON_OK) {
+      snprintf(window->title, sizeof(window->title), "%s",
+               title != NULL ? title : "");
+    }
+    return status;
+  }
   return window == NULL || window->backend == NULL
              ? PROTON_OK
              : proton_engine_window_set_title(window->backend, title, error,
@@ -176,6 +339,15 @@ int32_t proton_platform_window_set_title(proton_platform_window_t *window,
 int32_t proton_platform_window_set_size(proton_platform_window_t *window,
                                         int32_t width, int32_t height,
                                         char *error, size_t error_len) {
+  if (window != NULL && window->native_window != NULL) {
+    int32_t status = proton_platform_window_native_set_size(
+        window, width, height, error, error_len);
+    if (status == PROTON_OK) {
+      window->width = width;
+      window->height = height;
+    }
+    return status;
+  }
   return window == NULL || window->backend == NULL
              ? PROTON_OK
              : proton_engine_window_set_size(window->backend, width, height,

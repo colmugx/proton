@@ -5,7 +5,7 @@ import {
 supported_targets = "native"
 
 options(
-  "native-stub": [ "window_geometry_test.c" ],
+  "native-stub": [ "window_geometry_test.c", "platform_window_canary_test.c" ],
   link: {
     "native": { "stub-cc-flags": "${build.PROTON_NATIVE_STUB_CC_FLAGS}" },
   },

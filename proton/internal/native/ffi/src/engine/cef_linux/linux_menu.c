@@ -390,21 +390,21 @@ static void proton_engine_menu_role_activated(const char *role,
          candidate != NULL;
          candidate = candidate->next) {
       if (candidate->runtime == window->runtime &&
-          candidate->window != NULL) {
-        gtk_window_close(GTK_WINDOW(candidate->window));
+          proton_engine_window_native_widget(candidate) != NULL) {
+        gtk_window_close(GTK_WINDOW(proton_engine_window_native_widget(candidate)));
       }
     }
   } else if (strcmp(role, "hide") == 0) {
-    if (window->window != NULL) {
-      gtk_widget_hide(window->window);
+    if (proton_engine_window_native_widget(window) != NULL) {
+      gtk_widget_hide(proton_engine_window_native_widget(window));
     }
   } else if (strcmp(role, "hide_others") == 0) {
     for (proton_engine_window_t *candidate = proton_engine_windows_head();
          candidate != NULL;
          candidate = candidate->next) {
       if (candidate != window && candidate->runtime == window->runtime &&
-          candidate->window != NULL) {
-        gtk_widget_hide(candidate->window);
+          proton_engine_window_native_widget(candidate) != NULL) {
+        gtk_widget_hide(proton_engine_window_native_widget(candidate));
       }
     }
   } else if (strcmp(role, "show_all") == 0) {
@@ -412,17 +412,17 @@ static void proton_engine_menu_role_activated(const char *role,
          candidate != NULL;
          candidate = candidate->next) {
       if (candidate->runtime == window->runtime &&
-          candidate->window != NULL) {
-        gtk_widget_show_all(candidate->window);
+          proton_engine_window_native_widget(candidate) != NULL) {
+        gtk_widget_show_all(proton_engine_window_native_widget(candidate));
       }
     }
   } else if (strcmp(role, "close") == 0) {
-    if (window->window != NULL) {
-      gtk_window_close(GTK_WINDOW(window->window));
+    if (proton_engine_window_native_widget(window) != NULL) {
+      gtk_window_close(GTK_WINDOW(proton_engine_window_native_widget(window)));
     }
   } else if (strcmp(role, "minimize") == 0) {
-    if (window->window != NULL) {
-      gtk_window_iconify(GTK_WINDOW(window->window));
+    if (proton_engine_window_native_widget(window) != NULL) {
+      gtk_window_iconify(GTK_WINDOW(proton_engine_window_native_widget(window)));
     }
   } else if (strcmp(role, "zoom") == 0) {
     proton_engine_overlay_toggle_maximize(window);
@@ -437,7 +437,7 @@ int32_t proton_engine_window_install_menu(
     const proton_linux_menu_bar_t *menu_definition,
     char *error,
     size_t error_len) {
-  if (window == NULL || window->window == NULL || window->root_box == NULL ||
+  if (window == NULL || proton_engine_window_native_widget(window) == NULL || window->root_box == NULL ||
       menu_definition == NULL) {
     proton_engine_set_message(error, error_len,
                               "window and menu definition are required");
@@ -458,7 +458,7 @@ int32_t proton_engine_window_install_menu(
   }
 
   if (window->menu_accel_group != NULL) {
-    gtk_window_remove_accel_group(GTK_WINDOW(window->window),
+    gtk_window_remove_accel_group(GTK_WINDOW(proton_engine_window_native_widget(window)),
                                   window->menu_accel_group);
     g_object_unref(window->menu_accel_group);
   }
@@ -467,7 +467,7 @@ int32_t proton_engine_window_install_menu(
   }
   window->menu_bar = menu_bar;
   window->menu_accel_group = accelerators;
-  gtk_window_add_accel_group(GTK_WINDOW(window->window), accelerators);
+  gtk_window_add_accel_group(GTK_WINDOW(proton_engine_window_native_widget(window)), accelerators);
   gtk_box_pack_start(GTK_BOX(window->root_box), menu_bar, FALSE, FALSE, 0);
   gtk_box_reorder_child(GTK_BOX(window->root_box), menu_bar, 0);
   gtk_widget_show_all(menu_bar);
@@ -496,7 +496,7 @@ int32_t proton_engine_runtime_set_menu(
   for (proton_engine_window_t *window = proton_engine_windows_head();
        window != NULL;
        window = window->next) {
-    if (window->runtime != runtime || window->window == NULL) {
+    if (window->runtime != runtime || proton_engine_window_native_widget(window) == NULL) {
       continue;
     }
     const int32_t status = proton_engine_window_install_menu(
@@ -523,7 +523,7 @@ int32_t proton_engine_window_popup_menu(
                               "popup menu requires at least one menu");
     return PROTON_ERR_INVALID_ARGUMENT;
   }
-  if (window->window == NULL || window->browser_host == NULL ||
+  if (proton_engine_window_native_widget(window) == NULL || window->browser_host == NULL ||
       gtk_widget_get_window(window->browser_host) == NULL) {
     proton_engine_set_message(error, error_len,
                               "window is not ready for a popup menu");

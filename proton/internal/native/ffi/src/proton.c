@@ -544,13 +544,9 @@ int32_t proton_internal_menu_popup(proton_window_handle_t window, int32_t x,
     return proton_set_error(PROTON_ERR_INVALID_ARGUMENT,
                             "popup menu requires at least one menu");
   }
-  if (slot->presentation_surface == NULL) {
-    return proton_set_error(PROTON_ERR_UNSUPPORTED,
-                            "window popup menu requires native engine");
-  }
   char engine_error[512] = {0};
-  status = proton_engine_window_popup_menu(
-      slot->presentation_surface, x, y, menu_bar, engine_error, sizeof(engine_error));
+  status = proton_platform_window_popup_menu(
+      slot->platform_window, x, y, menu_bar, engine_error, sizeof(engine_error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, engine_error);
   }
@@ -1033,34 +1029,14 @@ int32_t proton_window_close(proton_window_handle_t window) {
     g_last_error[0] = '\0';
     return PROTON_OK;
   }
-  if (slot->presentation_surface != NULL) {
-    char engine_error[512] = {0};
-    status = proton_engine_window_close(slot->presentation_surface, engine_error,
+  char engine_error[512] = {0};
+  status = proton_platform_window_close(slot->platform_window, engine_error,
                                         sizeof(engine_error));
-    if (status != PROTON_OK) {
-      return proton_set_engine_status(status, engine_error);
-    }
-    if (!slot->close_interception_enabled) {
-      proton_window_slot_request_close(slot);
-    }
-  } else {
-    char engine_error[512] = {0};
-    status = proton_platform_window_destroy_shell(
-        slot->platform_window, engine_error, sizeof(engine_error));
-    if (status != PROTON_OK) {
-      return proton_set_engine_status(status, engine_error);
-    }
-    proton_runtime_slot_t *runtime = NULL;
-    status = proton_get_runtime(slot->runtime, &runtime);
-    if (status != PROTON_OK) {
-      return status;
-    }
-    status = proton_window_enqueue_closed_once(runtime, slot);
-    if (status != PROTON_OK) {
-      return status;
-    }
+  if (status != PROTON_OK) {
+    return proton_set_engine_status(status, engine_error);
+  }
+  if (!slot->close_interception_enabled) {
     proton_window_slot_request_close(slot);
-    proton_window_slot_mark_closed(slot);
   }
   g_last_error[0] = '\0';
   return PROTON_OK;
@@ -2139,13 +2115,9 @@ int32_t proton_window_set_close_interception(proton_window_handle_t window,
   if (status != PROTON_OK) {
     return status;
   }
-  if (slot->presentation_surface == NULL) {
-    return proton_set_error(PROTON_ERR_UNSUPPORTED,
-                            "close interception requires native engine");
-  }
   char engine_error[512] = {0};
-  status = proton_engine_window_set_close_interception(
-      slot->presentation_surface, enabled, engine_error, sizeof(engine_error));
+  status = proton_platform_window_set_close_interception(
+      slot->platform_window, enabled, engine_error, sizeof(engine_error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, engine_error);
   }
@@ -2175,13 +2147,9 @@ int32_t proton_window_respond_close_request(proton_window_handle_t window,
     return proton_set_error(PROTON_ERR_DESTROYED,
                             "window close request is no longer active");
   }
-  if (slot->presentation_surface == NULL) {
-    return proton_set_error(PROTON_ERR_UNSUPPORTED,
-                            "close interception requires native engine");
-  }
   char engine_error[512] = {0};
-  status = proton_engine_window_respond_close_request(
-      slot->presentation_surface, (uint64_t)request_id, allow, engine_error,
+  status = proton_platform_window_respond_close_request(
+      slot->platform_window, (uint64_t)request_id, allow, engine_error,
       sizeof(engine_error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, engine_error);
@@ -2664,9 +2632,10 @@ static int32_t proton_require_dialog_window(proton_window_handle_t window,
   if (status != PROTON_OK) {
     return status;
   }
-  if (slot->presentation_surface == NULL) {
+  if (slot->platform_window == NULL ||
+      proton_platform_window_backend(slot->platform_window) == NULL) {
     return proton_set_error(PROTON_ERR_UNSUPPORTED,
-                            "native dialog requires native engine window");
+                            "native dialog requires a platform window");
   }
   *out_slot = slot;
   return PROTON_OK;
@@ -3113,8 +3082,8 @@ int32_t proton_window_begin_message_dialog(
     return status;
   }
   char engine_error[512] = {0};
-  status = proton_engine_window_begin_message_dialog(
-      slot->presentation_surface, title_utf8, title_len, message_utf8,
+  status = proton_platform_window_begin_message_dialog(
+      slot->platform_window, title_utf8, title_len, message_utf8,
       message_len, level, out_dialog, engine_error, sizeof(engine_error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, engine_error);
@@ -3146,8 +3115,8 @@ int32_t proton_window_begin_confirm_dialog(
     return status;
   }
   char engine_error[512] = {0};
-  status = proton_engine_window_begin_confirm_dialog(
-      slot->presentation_surface, title_utf8, title_len, message_utf8,
+  status = proton_platform_window_begin_confirm_dialog(
+      slot->platform_window, title_utf8, title_len, message_utf8,
       message_len, level, out_dialog, engine_error, sizeof(engine_error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, engine_error);
@@ -3181,8 +3150,8 @@ int32_t proton_window_begin_open_file_dialog(
     return status;
   }
   char engine_error[512] = {0};
-  status = proton_engine_window_begin_open_file_dialog(
-      slot->presentation_surface, title_utf8, title_len, path_utf8, path_len,
+  status = proton_platform_window_begin_open_file_dialog(
+      slot->platform_window, title_utf8, title_len, path_utf8, path_len,
       out_dialog, engine_error, sizeof(engine_error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, engine_error);
@@ -3216,8 +3185,8 @@ int32_t proton_window_begin_save_file_dialog(
     return status;
   }
   char engine_error[512] = {0};
-  status = proton_engine_window_begin_save_file_dialog(
-      slot->presentation_surface, title_utf8, title_len, path_utf8, path_len,
+  status = proton_platform_window_begin_save_file_dialog(
+      slot->platform_window, title_utf8, title_len, path_utf8, path_len,
       out_dialog, engine_error, sizeof(engine_error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, engine_error);
@@ -3251,8 +3220,8 @@ int32_t proton_window_begin_choose_directory_dialog(
     return status;
   }
   char engine_error[512] = {0};
-  status = proton_engine_window_begin_choose_directory_dialog(
-      slot->presentation_surface, title_utf8, title_len, path_utf8, path_len,
+  status = proton_platform_window_begin_choose_directory_dialog(
+      slot->platform_window, title_utf8, title_len, path_utf8, path_len,
       out_dialog, engine_error, sizeof(engine_error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, engine_error);
@@ -3273,8 +3242,8 @@ int32_t proton_window_cancel_dialog(proton_window_handle_t window,
     return status;
   }
   char engine_error[512] = {0};
-  status = proton_engine_window_cancel_dialog(
-      slot->presentation_surface, dialog, engine_error, sizeof(engine_error));
+  status = proton_platform_window_cancel_dialog(
+      slot->platform_window, dialog, engine_error, sizeof(engine_error));
   if (status != PROTON_OK) {
     return proton_set_engine_status(status, engine_error);
   }

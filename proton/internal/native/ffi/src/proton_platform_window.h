@@ -14,6 +14,7 @@
 typedef struct proton_platform_window {
   proton_engine_window_t *backend;
   void *native_window;
+  void *content_host;
   int32_t release_pending;
   char title[512];
   int32_t width;

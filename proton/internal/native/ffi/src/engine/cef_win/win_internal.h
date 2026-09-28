@@ -63,21 +63,6 @@ void proton_engine_runtime_accessibility_requested(
  * synthetic WM_DPICHANGED through that same procedure. */
 void proton_engine_register_window_class(void);
 
-static inline HWND proton_engine_window_hwnd(
-    const proton_engine_window_t *window) {
-  return window != NULL && window->platform != NULL
-             ? (HWND)window->platform->native_window
-             : NULL;
-}
-
-static inline void proton_engine_window_set_hwnd(
-    proton_engine_window_t *window, HWND hwnd) {
-  if (window != NULL && window->platform != NULL) {
-    window->platform->native_window = (void *)hwnd;
-    window->platform->content_host = (void *)hwnd;
-  }
-}
-
 
 struct proton_engine_window {
   proton_platform_window_t *platform;
@@ -145,6 +130,22 @@ struct proton_engine_window {
   size_t app_menu_binding_count;
   struct proton_engine_window *next;
 };
+
+static inline HWND proton_engine_window_hwnd(
+    const proton_engine_window_t *window) {
+  return window != NULL && window->platform != NULL
+             ? (HWND)window->platform->native_window
+             : NULL;
+}
+
+static inline void proton_engine_window_set_hwnd(
+    proton_engine_window_t *window, HWND hwnd) {
+  if (window != NULL && window->platform != NULL) {
+    window->platform->native_window = (void *)hwnd;
+    window->platform->content_host = (void *)hwnd;
+  }
+}
+
 
 void proton_engine_dialog_cancel_runtime(proton_engine_runtime_t *runtime);
 void proton_engine_dialog_cancel_window(proton_engine_window_t *window);

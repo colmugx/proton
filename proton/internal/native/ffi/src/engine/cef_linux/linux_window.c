@@ -737,7 +737,8 @@ int32_t proton_engine_window_create(
       proton_browser_lifecycle_creation_failed(window->browser_lifecycle);
       proton_engine_bridge_host_destroy(window->bridge);
       proton_browser_session_destroy(window->browser_session);
-      free(window);
+      proton_platform_window_backend_finalized(window->platform, window);
+    free(window);
       proton_engine_set_message(error, error_len,
                                 "failed to allocate browser state");
       return PROTON_ERR_ENGINE;
@@ -753,7 +754,8 @@ int32_t proton_engine_window_create(
       proton_browser_lifecycle_clear_owner(window->browser_lifecycle);
       proton_browser_session_destroy(window->browser_session);
       proton_engine_bridge_host_destroy(window->bridge);
-      free(window);
+      proton_platform_window_backend_finalized(window->platform, window);
+    free(window);
       proton_engine_set_message(error, error_len, "failed to allocate client");
       return PROTON_ERR_ENGINE;
     }
@@ -768,7 +770,8 @@ int32_t proton_engine_window_create(
       proton_browser_lifecycle_clear_owner(window->browser_lifecycle);
       proton_browser_session_destroy(window->browser_session);
       proton_engine_bridge_host_destroy(window->bridge);
-      free(window);
+      proton_platform_window_backend_finalized(window->platform, window);
+    free(window);
       proton_engine_set_message(error, error_len, "window creation failed");
       return PROTON_ERR_PLATFORM;
     }
@@ -779,7 +782,8 @@ int32_t proton_engine_window_create(
       proton_browser_lifecycle_clear_owner(window->browser_lifecycle);
       proton_browser_session_destroy(window->browser_session);
       proton_engine_bridge_host_destroy(window->bridge);
-      free(window);
+      proton_platform_window_backend_finalized(window->platform, window);
+    free(window);
       proton_engine_set_message(error, error_len,
                                 "window root container creation failed");
       return PROTON_ERR_PLATFORM;
@@ -802,7 +806,8 @@ int32_t proton_engine_window_create(
         proton_browser_lifecycle_clear_owner(window->browser_lifecycle);
         proton_browser_session_destroy(window->browser_session);
         proton_engine_bridge_host_destroy(window->bridge);
-        free(window);
+        proton_platform_window_backend_finalized(window->platform, window);
+    free(window);
         proton_engine_set_message(error, error_len,
                                   "overlay container creation failed");
         return PROTON_ERR_PLATFORM;
@@ -815,7 +820,8 @@ int32_t proton_engine_window_create(
       proton_browser_lifecycle_clear_owner(window->browser_lifecycle);
       proton_browser_session_destroy(window->browser_session);
       proton_engine_bridge_host_destroy(window->bridge);
-      free(window);
+      proton_platform_window_backend_finalized(window->platform, window);
+    free(window);
       proton_engine_set_message(error, error_len,
                                 "browser host widget creation failed");
       return PROTON_ERR_PLATFORM;
@@ -829,7 +835,8 @@ int32_t proton_engine_window_create(
         proton_browser_lifecycle_clear_owner(window->browser_lifecycle);
         proton_browser_session_destroy(window->browser_session);
         proton_engine_bridge_host_destroy(window->bridge);
-        free(window);
+        proton_platform_window_backend_finalized(window->platform, window);
+    free(window);
         proton_engine_set_message(error, error_len,
                                   "overlay window controls creation failed");
         return PROTON_ERR_PLATFORM;
@@ -850,7 +857,8 @@ int32_t proton_engine_window_create(
         proton_browser_lifecycle_clear_owner(window->browser_lifecycle);
         proton_browser_session_destroy(window->browser_session);
         proton_engine_bridge_host_destroy(window->bridge);
-        free(window);
+        proton_platform_window_backend_finalized(window->platform, window);
+    free(window);
         return status;
       }
     }
@@ -896,7 +904,8 @@ int32_t proton_engine_window_create(
       proton_browser_lifecycle_clear_owner(window->browser_lifecycle);
       proton_browser_session_destroy(window->browser_session);
       proton_engine_bridge_host_destroy(window->bridge);
-      free(window);
+      proton_platform_window_backend_finalized(window->platform, window);
+    free(window);
       return status;
     }
   }

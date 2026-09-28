@@ -43,6 +43,48 @@ int32_t proton_platform_window_configure(
   return PROTON_OK;
 }
 
+
+int32_t proton_platform_window_materialize(
+    proton_platform_window_t *window, proton_engine_runtime_t *runtime,
+    proton_window_id_t public_window, char *error, size_t error_len) {
+  if (window == NULL) {
+    return PROTON_ERR_INVALID_ARGUMENT;
+  }
+  if (window->backend != NULL) {
+    return PROTON_OK;
+  }
+  if (runtime == NULL) {
+    return PROTON_OK;
+  }
+  proton_engine_window_config_t config;
+  memset(&config, 0, sizeof(config));
+  config.public_window = public_window;
+  snprintf(config.title, sizeof(config.title), "%s", window->title);
+  config.width = window->width;
+  config.height = window->height;
+  config.size_hint = window->size_hint;
+  config.titlebar_overlay = window->titlebar_overlay;
+  config.theme_preference = window->theme_preference;
+  config.button_position_custom = window->button_position_custom;
+  config.button_position_x = window->button_position_x;
+  config.button_position_y = window->button_position_y;
+  snprintf(config.titlebar_minimize_label,
+           sizeof(config.titlebar_minimize_label), "%s",
+           window->titlebar_minimize_label);
+  snprintf(config.titlebar_maximize_label,
+           sizeof(config.titlebar_maximize_label), "%s",
+           window->titlebar_maximize_label);
+  snprintf(config.titlebar_restore_label,
+           sizeof(config.titlebar_restore_label), "%s",
+           window->titlebar_restore_label);
+  snprintf(config.titlebar_close_label,
+           sizeof(config.titlebar_close_label), "%s",
+           window->titlebar_close_label);
+  config.defer_presentation = 1;
+  return proton_engine_window_create(runtime, &config, &window->backend,
+                                     error, error_len);
+}
+
 void proton_platform_window_free(proton_platform_window_t *window) {
   free(window);
 }

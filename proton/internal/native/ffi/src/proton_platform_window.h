@@ -54,6 +54,10 @@ PROTON_INTERNAL void proton_platform_window_backend_finalized(
     proton_platform_window_t *window, proton_engine_window_t *backend);
 PROTON_INTERNAL proton_engine_window_t *proton_platform_window_backend(
     proton_platform_window_t *window);
+PROTON_INTERNAL void *proton_platform_window_native_handle(
+    proton_platform_window_t *window);
+PROTON_INTERNAL void *proton_platform_window_content_host(
+    proton_platform_window_t *window);
 
 PROTON_INTERNAL int32_t proton_platform_window_show(
     proton_platform_window_t *window, char *error, size_t error_len);

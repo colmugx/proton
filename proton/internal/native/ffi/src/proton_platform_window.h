@@ -13,9 +13,7 @@
  */
 typedef struct proton_platform_window {
   proton_engine_window_t *backend;
-#if defined(_WIN32)
   void *native_window;
-#endif
   char title[512];
   int32_t width;
   int32_t height;

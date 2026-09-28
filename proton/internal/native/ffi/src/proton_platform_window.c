@@ -454,3 +454,93 @@ int32_t proton_platform_window_flash_frame(
   return proton_engine_window_flash_frame(window->backend, flash, error,
                                           error_len);
 }
+
+
+int32_t proton_platform_window_popup_menu(
+    proton_platform_window_t *window, int32_t x, int32_t y,
+    const proton_menu_bar_t *menu_bar, char *error, size_t error_len) {
+  if (proton_platform_window_require_backend(window) != PROTON_OK)
+    return PROTON_ERR_UNSUPPORTED;
+  return proton_engine_window_popup_menu(window->backend, x, y, menu_bar,
+                                         error, error_len);
+}
+int32_t proton_platform_window_close(
+    proton_platform_window_t *window, char *error, size_t error_len) {
+  if (proton_platform_window_require_backend(window) != PROTON_OK)
+    return PROTON_ERR_UNSUPPORTED;
+  return proton_engine_window_close(window->backend, error, error_len);
+}
+int32_t proton_platform_window_set_close_interception(
+    proton_platform_window_t *window, int32_t enabled, char *error,
+    size_t error_len) {
+  if (proton_platform_window_require_backend(window) != PROTON_OK)
+    return PROTON_ERR_UNSUPPORTED;
+  return proton_engine_window_set_close_interception(window->backend, enabled,
+                                                     error, error_len);
+}
+int32_t proton_platform_window_respond_close_request(
+    proton_platform_window_t *window, uint64_t request_id, int32_t allow,
+    char *error, size_t error_len) {
+  if (proton_platform_window_require_backend(window) != PROTON_OK)
+    return PROTON_ERR_UNSUPPORTED;
+  return proton_engine_window_respond_close_request(window->backend, request_id,
+                                                    allow, error, error_len);
+}
+int32_t proton_platform_window_begin_message_dialog(
+    proton_platform_window_t *window, const char *title_utf8,
+    int32_t title_len, const char *message_utf8, int32_t message_len,
+    int32_t level, int64_t *out_dialog, char *error, size_t error_len) {
+  if (proton_platform_window_require_backend(window) != PROTON_OK)
+    return PROTON_ERR_UNSUPPORTED;
+  return proton_engine_window_begin_message_dialog(
+      window->backend, title_utf8, title_len, message_utf8, message_len, level,
+      out_dialog, error, error_len);
+}
+int32_t proton_platform_window_begin_confirm_dialog(
+    proton_platform_window_t *window, const char *title_utf8,
+    int32_t title_len, const char *message_utf8, int32_t message_len,
+    int32_t level, int64_t *out_dialog, char *error, size_t error_len) {
+  if (proton_platform_window_require_backend(window) != PROTON_OK)
+    return PROTON_ERR_UNSUPPORTED;
+  return proton_engine_window_begin_confirm_dialog(
+      window->backend, title_utf8, title_len, message_utf8, message_len, level,
+      out_dialog, error, error_len);
+}
+int32_t proton_platform_window_begin_open_file_dialog(
+    proton_platform_window_t *window, const char *title_utf8,
+    int32_t title_len, const char *path_utf8, int32_t path_len,
+    int64_t *out_dialog, char *error, size_t error_len) {
+  if (proton_platform_window_require_backend(window) != PROTON_OK)
+    return PROTON_ERR_UNSUPPORTED;
+  return proton_engine_window_begin_open_file_dialog(
+      window->backend, title_utf8, title_len, path_utf8, path_len, out_dialog,
+      error, error_len);
+}
+int32_t proton_platform_window_begin_save_file_dialog(
+    proton_platform_window_t *window, const char *title_utf8,
+    int32_t title_len, const char *path_utf8, int32_t path_len,
+    int64_t *out_dialog, char *error, size_t error_len) {
+  if (proton_platform_window_require_backend(window) != PROTON_OK)
+    return PROTON_ERR_UNSUPPORTED;
+  return proton_engine_window_begin_save_file_dialog(
+      window->backend, title_utf8, title_len, path_utf8, path_len, out_dialog,
+      error, error_len);
+}
+int32_t proton_platform_window_begin_choose_directory_dialog(
+    proton_platform_window_t *window, const char *title_utf8,
+    int32_t title_len, const char *path_utf8, int32_t path_len,
+    int64_t *out_dialog, char *error, size_t error_len) {
+  if (proton_platform_window_require_backend(window) != PROTON_OK)
+    return PROTON_ERR_UNSUPPORTED;
+  return proton_engine_window_begin_choose_directory_dialog(
+      window->backend, title_utf8, title_len, path_utf8, path_len, out_dialog,
+      error, error_len);
+}
+int32_t proton_platform_window_cancel_dialog(
+    proton_platform_window_t *window, int64_t dialog, char *error,
+    size_t error_len) {
+  if (proton_platform_window_require_backend(window) != PROTON_OK)
+    return PROTON_ERR_UNSUPPORTED;
+  return proton_engine_window_cancel_dialog(window->backend, dialog, error,
+                                             error_len);
+}

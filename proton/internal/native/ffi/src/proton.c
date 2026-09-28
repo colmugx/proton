@@ -786,7 +786,12 @@ int32_t proton_runtime_respond_bridge_request(
 }
 
 int32_t proton_internal_platform_window_create(
-    proton_runtime_handle_t runtime, int32_t width, int32_t height,
+    proton_runtime_handle_t runtime, const char *title, int32_t width,
+    int32_t height, int32_t size_hint, int32_t titlebar_overlay,
+    int32_t theme_preference, int32_t button_position_custom,
+    int32_t button_position_x, int32_t button_position_y,
+    const char *titlebar_minimize_label, const char *titlebar_maximize_label,
+    const char *titlebar_restore_label, const char *titlebar_close_label,
     proton_window_handle_t *out_window) {
   proton_runtime_slot_t *runtime_slot = NULL;
   int32_t status = proton_get_runtime(runtime, &runtime_slot);
@@ -796,21 +801,30 @@ int32_t proton_internal_platform_window_create(
                             "out_window is required");
   }
   int64_t logical_id = proton_runtime_reserve_window_id(runtime_slot);
-  return proton_window_slot_create(runtime_slot, NULL, logical_id, width,
-                                   height, out_window);
+  status = proton_window_slot_create(runtime_slot, NULL, logical_id, width,
+                                    height, out_window);
+  if (status != PROTON_OK) return status;
+  proton_window_slot_t *slot = NULL;
+  status = proton_get_window(*out_window, &slot);
+  if (status != PROTON_OK) return status;
+  status = proton_platform_window_configure(
+      slot->platform_window, title, width, height, size_hint, titlebar_overlay,
+      theme_preference, button_position_custom, button_position_x,
+      button_position_y, titlebar_minimize_label, titlebar_maximize_label,
+      titlebar_restore_label, titlebar_close_label);
+  if (status != PROTON_OK) {
+    proton_window_slot_destroy(*out_window);
+    *out_window = PROTON_INVALID_HANDLE;
+    return proton_set_error(status, "invalid platform window configuration");
+  }
+  return PROTON_OK;
 }
 
 int32_t proton_internal_cef_surface_attach(
-    proton_window_handle_t platform_window_handle, const char *title, int32_t width,
-    int32_t height, const char *initial_url, int32_t size_hint,
-    int32_t titlebar_overlay, int32_t theme_preference,
-    int32_t button_position_custom, int32_t button_position_x,
-    int32_t button_position_y,
-    int32_t navigation_policy,
-    const char *titlebar_minimize_label, const char *titlebar_maximize_label,
-    const char *titlebar_restore_label, const char *titlebar_close_label,
-    int32_t new_window_policy, int32_t download_policy,
-    int32_t certificate_policy, int32_t media_policy, int32_t devtools,
+    proton_window_handle_t platform_window_handle, const char *initial_url,
+    int32_t navigation_policy, int32_t new_window_policy,
+    int32_t download_policy, int32_t certificate_policy,
+    int32_t media_policy, int32_t devtools,
     proton_bridge_config_owner_t *bridge_config,
     proton_web_request_config_owner_t *web_request_config) {
   proton_window_slot_t *platform_window = NULL;
@@ -821,19 +835,24 @@ int32_t proton_internal_cef_surface_attach(
                             "presentation surface is already attached");
   }
   proton_runtime_slot_t *runtime_slot = platform_window->runtime;
+  proton_platform_window_t *native_window = platform_window->platform_window;
   proton_engine_window_config_t config;
   status = proton_config_prepare_window(
-      title, width, height, initial_url, size_hint, titlebar_overlay,
-      theme_preference, navigation_policy, titlebar_minimize_label,
-      titlebar_maximize_label, titlebar_restore_label, titlebar_close_label,
-      new_window_policy, download_policy, certificate_policy, media_policy,
-      devtools, bridge_config->value, web_request_config->value, &config);
+      native_window->title, native_window->width, native_window->height,
+      initial_url, native_window->size_hint, native_window->titlebar_overlay,
+      native_window->theme_preference, navigation_policy,
+      native_window->titlebar_minimize_label,
+      native_window->titlebar_maximize_label,
+      native_window->titlebar_restore_label,
+      native_window->titlebar_close_label, new_window_policy, download_policy,
+      certificate_policy, media_policy, devtools, bridge_config->value,
+      web_request_config->value, &config);
   if (status != PROTON_OK) {
     return status;
   }
-  config.button_position_custom = button_position_custom;
-  config.button_position_x = button_position_x;
-  config.button_position_y = button_position_y;
+  config.button_position_custom = native_window->button_position_custom;
+  config.button_position_x = native_window->button_position_x;
+  config.button_position_y = native_window->button_position_y;
   int64_t logical_id = platform_window->logical_id;
   config.public_window = logical_id;
   proton_engine_window_t *engine_window = NULL;
@@ -873,14 +892,13 @@ int32_t proton_internal_window_create(
     proton_web_request_config_owner_t *web_request_config,
     proton_window_handle_t *out_window) {
   int32_t status = proton_internal_platform_window_create(
-      runtime, width, height, out_window);
+      runtime, title, width, height, size_hint, titlebar_overlay,
+      theme_preference, button_position_custom, button_position_x,
+      button_position_y, titlebar_minimize_label, titlebar_maximize_label,
+      titlebar_restore_label, titlebar_close_label, out_window);
   if (status != PROTON_OK) return status;
   status = proton_internal_cef_surface_attach(
-      *out_window, title, width, height, initial_url, size_hint,
-      titlebar_overlay, theme_preference, button_position_custom,
-      button_position_x, button_position_y, navigation_policy,
-      titlebar_minimize_label, titlebar_maximize_label,
-      titlebar_restore_label, titlebar_close_label, new_window_policy,
+      *out_window, initial_url, navigation_policy, new_window_policy,
       download_policy, certificate_policy, media_policy, devtools,
       bridge_config, web_request_config);
   if (status != PROTON_OK) {

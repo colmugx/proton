@@ -154,10 +154,23 @@ static inline void proton_engine_window_set_native_window(
   }
 }
 
+static inline NSView *proton_engine_window_content_view(
+    const proton_engine_window_t *window) {
+  return window != NULL && window->platform != NULL
+             ? (__bridge NSView *)window->platform->content_host
+             : nil;
+}
+
+static inline void proton_engine_window_set_content_view(
+    proton_engine_window_t *window, NSView *content_view) {
+  if (window != NULL && window->platform != NULL) {
+    window->platform->content_host = (__bridge void *)content_view;
+  }
+}
+
 struct proton_engine_window {
   proton_platform_window_t *platform;
   proton_engine_runtime_t *runtime;
-  NSView *content_view;
   // Borrowed from CEF; the AppKit hierarchy owns the host view. Never release.
   NSView *browser_view;
   id delegate;

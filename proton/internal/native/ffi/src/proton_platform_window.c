@@ -1,9 +1,46 @@
 #include "proton_platform_window.h"
 
+#include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 proton_platform_window_t *proton_platform_window_alloc(void) {
   return (proton_platform_window_t *)calloc(1, sizeof(proton_platform_window_t));
+}
+
+int32_t proton_platform_window_configure(
+    proton_platform_window_t *window, const char *title, int32_t width,
+    int32_t height, int32_t size_hint, int32_t titlebar_overlay,
+    int32_t theme_preference, int32_t button_position_custom,
+    int32_t button_position_x, int32_t button_position_y,
+    const char *titlebar_minimize_label, const char *titlebar_maximize_label,
+    const char *titlebar_restore_label, const char *titlebar_close_label) {
+  if (window == NULL || width <= 0 || height <= 0 || title == NULL) {
+    return PROTON_ERR_INVALID_ARGUMENT;
+  }
+  snprintf(window->title, sizeof(window->title), "%s", title);
+  window->width = width;
+  window->height = height;
+  window->size_hint = size_hint;
+  window->titlebar_overlay = titlebar_overlay;
+  window->theme_preference =
+      (proton_window_theme_preference_t)theme_preference;
+  window->button_position_custom = button_position_custom;
+  window->button_position_x = button_position_x;
+  window->button_position_y = button_position_y;
+  snprintf(window->titlebar_minimize_label,
+           sizeof(window->titlebar_minimize_label), "%s",
+           titlebar_minimize_label != NULL ? titlebar_minimize_label : "");
+  snprintf(window->titlebar_maximize_label,
+           sizeof(window->titlebar_maximize_label), "%s",
+           titlebar_maximize_label != NULL ? titlebar_maximize_label : "");
+  snprintf(window->titlebar_restore_label,
+           sizeof(window->titlebar_restore_label), "%s",
+           titlebar_restore_label != NULL ? titlebar_restore_label : "");
+  snprintf(window->titlebar_close_label,
+           sizeof(window->titlebar_close_label), "%s",
+           titlebar_close_label != NULL ? titlebar_close_label : "");
+  return PROTON_OK;
 }
 
 void proton_platform_window_free(proton_platform_window_t *window) {

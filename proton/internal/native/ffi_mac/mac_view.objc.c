@@ -72,10 +72,10 @@ static void proton_engine_view_list_add(proton_engine_window_t *window,
 // the Electron-style top-left anchoring.
 static void proton_engine_view_apply_frame(proton_engine_view_t *view) {
   if (view == NULL || view->window == NULL ||
-      view->window->content_view == nil || view->browser_view == nil) {
+      proton_engine_window_content_view(view->window) == nil || view->browser_view == nil) {
     return;
   }
-  CGFloat content_height = view->window->content_view.bounds.size.height;
+  CGFloat content_height = proton_engine_window_content_view(view->window).bounds.size.height;
   NSRect frame = NSMakeRect((CGFloat)view->x,
                             content_height - (CGFloat)view->y -
                                 (CGFloat)view->height,
@@ -89,7 +89,7 @@ static void proton_engine_view_apply_frame(proton_engine_view_t *view) {
 // ascending (z_order, native_id); the main browser view stays at the bottom
 // because it was added first and is never re-added here.
 void proton_engine_window_layout_views(proton_engine_window_t *window) {
-  if (window == NULL || window->content_view == nil) {
+  if (window == NULL || proton_engine_window_content_view(window) == nil) {
     return;
   }
   size_t count = 0;
@@ -127,7 +127,7 @@ void proton_engine_window_layout_views(proton_engine_window_t *window) {
     order[j] = current;
   }
   for (size_t i = 0; i < count; i++) {
-    [window->content_view addSubview:order[i]->browser_view
+    [proton_engine_window_content_view(window) addSubview:order[i]->browser_view
                           positioned:NSWindowAbove
                           relativeTo:nil];
   }
@@ -271,15 +271,15 @@ static int32_t proton_engine_view_create_browser(proton_engine_view_t *view,
   memset(&browser_settings, 0, sizeof(browser_settings));
   window_info.size = sizeof(window_info);
   browser_settings.size = sizeof(browser_settings);
-  if (window->content_view != nil) {
-    window_info.parent_view = (__bridge void *)window->content_view;
+  if (proton_engine_window_content_view(window) != nil) {
+    window_info.parent_view = (__bridge void *)proton_engine_window_content_view(window);
   }
   if (window->headless) {
     window_info.windowless_rendering_enabled = 1;
     window_info.runtime_style = CEF_RUNTIME_STYLE_ALLOY;
   }
-  CGFloat content_height = window->content_view != nil
-                               ? window->content_view.bounds.size.height
+  CGFloat content_height = proton_engine_window_content_view(window) != nil
+                               ? proton_engine_window_content_view(window).bounds.size.height
                                : (CGFloat)(view->y + view->height);
   window_info.bounds.x = view->x;
   window_info.bounds.y =
@@ -413,9 +413,9 @@ void proton_engine_view_on_after_created(proton_engine_view_t *view,
     }
     host->base.release((cef_base_ref_counted_t *)host);
   }
-  if (window->content_view != nil && view->browser_view != nil) {
+  if (proton_engine_window_content_view(window) != nil && view->browser_view != nil) {
     if (view->browser_view.superview == nil) {
-      [window->content_view addSubview:view->browser_view];
+      [proton_engine_window_content_view(window) addSubview:view->browser_view];
     }
     proton_engine_view_apply_frame(view);
     proton_engine_window_layout_views(window);

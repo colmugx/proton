@@ -108,3 +108,14 @@ extern "C" fn closed_modal_collection_test() -> Int = "proton_test_closed_modal_
 test "closed modal records survive collection until native destruction" {
   assert_eq(closed_modal_collection_test(), 0)
 }
+
+|
+#cfg(platform="windows")
+extern "C" fn platform_window_without_presentation_test() -> Int =
+  "proton_test_platform_window_without_presentation"
+
+///|
+#cfg(platform="windows")
+test "platform window lifecycle works without a CEF presentation runtime" {
+  assert_eq(platform_window_without_presentation_test(), 0)
+}

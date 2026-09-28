@@ -1242,6 +1242,9 @@ int32_t proton_engine_window_attach_presentation(
   }
 }
 
+static void proton_engine_window_defer_finalize(
+    proton_engine_window_t *window);
+
 int32_t proton_engine_window_detach_presentation(
     proton_engine_window_t *window, char *error, size_t error_len) {
   @autoreleasepool {

@@ -251,11 +251,11 @@ static void proton_engine_overlay_region_subtract(
 void proton_engine_overlay_update_input_shape(
     proton_engine_window_t *window) {
   if (window == NULL || !window->titlebar_overlay ||
-      proton_engine_window_native_widget(window) == NULL || window->browser_host == NULL) {
+      proton_engine_window_native_widget(window) == NULL || proton_engine_window_content_host(window) == NULL) {
     return;
   }
-  const int width = gtk_widget_get_allocated_width(window->browser_host);
-  const int height = gtk_widget_get_allocated_height(window->browser_host);
+  const int width = gtk_widget_get_allocated_width(proton_engine_window_content_host(window));
+  const int height = gtk_widget_get_allocated_height(proton_engine_window_content_host(window));
   if (width <= 0 || height <= 0) {
     return;
   }
@@ -330,7 +330,7 @@ void proton_engine_overlay_update_input_shape(
     int controls_x = 0;
     int controls_y = 0;
     if (gtk_widget_translate_coordinates(window->overlay_controls,
-                                         window->browser_host, 0, 0,
+                                         proton_engine_window_content_host(window), 0, 0,
                                          &controls_x, &controls_y)) {
       proton_engine_overlay_region_subtract(
           region, (proton_linux_titlebar_rect_t){
@@ -619,10 +619,10 @@ static proton_linux_titlebar_hit_t proton_engine_overlay_hit_test(
     Window root,
     int root_x,
     int root_y) {
-  if (window == NULL || window->browser_host == NULL || display == NULL) {
+  if (window == NULL || proton_engine_window_content_host(window) == NULL || display == NULL) {
     return PROTON_LINUX_TITLEBAR_HIT_NONE;
   }
-  GdkWindow *browser_gdk_window = gtk_widget_get_window(window->browser_host);
+  GdkWindow *browser_gdk_window = gtk_widget_get_window(proton_engine_window_content_host(window));
   if (browser_gdk_window == NULL) {
     return PROTON_LINUX_TITLEBAR_HIT_NONE;
   }
@@ -638,9 +638,9 @@ static proton_linux_titlebar_hit_t proton_engine_overlay_hit_test(
   if (!XGetWindowAttributes(display, browser_xid, &attributes)) {
     return PROTON_LINUX_TITLEBAR_HIT_NONE;
   }
-  const int logical_width = gtk_widget_get_allocated_width(window->browser_host);
+  const int logical_width = gtk_widget_get_allocated_width(proton_engine_window_content_host(window));
   const int logical_height =
-      gtk_widget_get_allocated_height(window->browser_host);
+      gtk_widget_get_allocated_height(proton_engine_window_content_host(window));
   proton_linux_titlebar_point_t point = {
       .x = proton_linux_titlebar_device_to_logical(
           device_x, attributes.width, logical_width),
@@ -653,7 +653,7 @@ static proton_linux_titlebar_hit_t proton_engine_overlay_hit_test(
     int controls_x = 0;
     int controls_y = 0;
     if (gtk_widget_translate_coordinates(window->overlay_controls,
-                                         window->browser_host, 0, 0,
+                                         proton_engine_window_content_host(window), 0, 0,
                                          &controls_x, &controls_y)) {
       controls.x = controls_x;
       controls.y = controls_y;

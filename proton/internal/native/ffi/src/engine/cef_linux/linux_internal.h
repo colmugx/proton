@@ -4,6 +4,7 @@
 /* Private contracts shared by the Linux engine translation units. */
 #include "../../proton_engine.h"
 #include "../../proton_event.h"
+#include "../../proton_platform_window.h"
 #include "../cef_common/bridge_client.h"
 #include "../cef_common/browser_lifecycle.h"
 #include "../cef_common/browser_session.h"
@@ -66,9 +67,23 @@ struct proton_engine_runtime {
   proton_browser_registry_t *browsers;
 };
 
+static inline GtkWidget *proton_engine_window_native_widget(
+    const proton_engine_window_t *window) {
+  return window != NULL && window->platform != NULL
+             ? (GtkWidget *)window->platform->native_window
+             : NULL;
+}
+
+static inline void proton_engine_window_set_native_widget(
+    proton_engine_window_t *window, GtkWidget *widget) {
+  if (window != NULL && window->platform != NULL) {
+    window->platform->native_window = (void *)widget;
+  }
+}
+
 struct proton_engine_window {
+  proton_platform_window_t *platform;
   proton_engine_runtime_t *runtime;
-  GtkWidget *window;
   GtkWidget *root_box;
   GtkWidget *menu_bar;
   GtkAccelGroup *menu_accel_group;

@@ -1038,6 +1038,12 @@ int32_t proton_window_close(proton_window_handle_t window) {
       proton_window_slot_request_close(slot);
     }
   } else {
+    char engine_error[512] = {0};
+    status = proton_platform_window_destroy_shell(
+        slot->platform_window, engine_error, sizeof(engine_error));
+    if (status != PROTON_OK) {
+      return proton_set_engine_status(status, engine_error);
+    }
     proton_runtime_slot_t *runtime = NULL;
     status = proton_get_runtime(slot->runtime, &runtime);
     if (status != PROTON_OK) {

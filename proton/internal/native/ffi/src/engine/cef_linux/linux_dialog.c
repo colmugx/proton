@@ -158,9 +158,9 @@ static int32_t proton_engine_dialog_register(
                    request);
   gtk_widget_show_all(dialog);
   if (kind == PROTON_ENGINE_LINUX_DIALOG_FILE && window != NULL &&
-      window->window != NULL) {
+      proton_engine_window_native_widget(window) != NULL) {
     proton_engine_file_dialog_set_default_size(GTK_WINDOW(dialog),
-                                               window->window);
+                                               proton_engine_window_native_widget(window));
   }
   GdkWindow *dialog_window = gtk_widget_get_window(dialog);
   guint32 present_time = dialog_window != NULL
@@ -199,7 +199,7 @@ static int32_t proton_engine_begin_message_dialog(
         "native dialogs are not supported in headless mode");
     return PROTON_ERR_UNSUPPORTED;
   }
-  if (window != NULL && window->window == NULL) {
+  if (window != NULL && proton_engine_window_native_widget(window) == NULL) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -220,7 +220,7 @@ static int32_t proton_engine_begin_message_dialog(
     return PROTON_ERR_ENGINE;
   }
   GtkWidget *dialog = gtk_message_dialog_new(
-      window != NULL ? GTK_WINDOW(window->window) : NULL,
+      window != NULL ? GTK_WINDOW(proton_engine_window_native_widget(window)) : NULL,
       GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
       proton_engine_dialog_message_type(level), GTK_BUTTONS_NONE, "%s",
       message);
@@ -349,7 +349,7 @@ int32_t proton_engine_window_begin_confirm_dialog(
         "native dialogs are not supported in headless mode");
     return PROTON_ERR_UNSUPPORTED;
   }
-  if (window->window == NULL) {
+  if (proton_engine_window_native_widget(window) == NULL) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -371,7 +371,7 @@ int32_t proton_engine_window_begin_confirm_dialog(
     return PROTON_ERR_ENGINE;
   }
   GtkWidget *dialog = gtk_message_dialog_new(
-      GTK_WINDOW(window->window),
+      GTK_WINDOW(proton_engine_window_native_widget(window)),
       GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
       proton_engine_dialog_message_type(level), GTK_BUTTONS_NONE, "%s",
       message);
@@ -511,7 +511,7 @@ static int32_t proton_engine_window_begin_file_dialog(
         "native dialogs are not supported in headless mode");
     return PROTON_ERR_UNSUPPORTED;
   }
-  if (window->window == NULL) {
+  if (proton_engine_window_native_widget(window) == NULL) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -536,7 +536,7 @@ static int32_t proton_engine_window_begin_file_dialog(
     action = GTK_FILE_CHOOSER_ACTION_SELECT_FOLDER;
   }
   GtkWidget *dialog = gtk_file_chooser_dialog_new(
-      title, GTK_WINDOW(window->window), action, runtime->dialog_cancel_label,
+      title, GTK_WINDOW(proton_engine_window_native_widget(window)), action, runtime->dialog_cancel_label,
       GTK_RESPONSE_CANCEL, accept_label, GTK_RESPONSE_ACCEPT, NULL);
   g_free(title);
   if (dialog == NULL) {

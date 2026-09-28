@@ -200,13 +200,13 @@ proton_engine_client_t *proton_engine_client_from_base(
 }
 
 static void proton_engine_window_list_add(proton_engine_window_t *window) {
-  if (window == NULL || proton_engine_window_native_window(window)_listed) {
+  if (window == NULL || window->window_listed) {
     return;
   }
   proton_engine_window_lock();
   window->next = g_windows;
   g_windows = window;
-  proton_engine_window_native_window(window)_listed = 1;
+  window->window_listed = 1;
   proton_engine_window_unlock();
 }
 
@@ -217,7 +217,7 @@ static void proton_engine_window_list_remove(proton_engine_window_t *window) {
     if (*cursor == window) {
       *cursor = window->next;
       window->next = NULL;
-      proton_engine_window_native_window(window)_listed = 0;
+      window->window_listed = 0;
       break;
     }
     cursor = &(*cursor)->next;
@@ -562,7 +562,7 @@ proton_engine_window_titlebar_area(
       MAX(0.0, NSMaxX(content_bounds) - NSMaxX(cluster));
   CGFloat safe_left;
   CGFloat safe_right;
-  if (!proton_engine_window_native_window(window)_button_visible) {
+  if (!window->window_button_visible) {
     safe_left = NSMinX(content_bounds);
     safe_right = NSMaxX(content_bounds);
   } else if (left_margin >= right_margin) {
@@ -1036,7 +1036,7 @@ int32_t proton_engine_window_create(
     window->max_height = config.size_hint == 3 ? config.height : 0;
     window->zoom_percent = 100;
     window->titlebar_overlay = config.titlebar_overlay;
-    proton_engine_window_native_window(window)_button_visible = 1;
+    window->window_button_visible = 1;
     window->button_position_custom = config.button_position_custom;
     window->button_position_x = config.button_position_x;
     window->button_position_y = config.button_position_y;
@@ -2183,7 +2183,7 @@ int32_t proton_engine_window_set_button_visibility(
       NSButton *button = [proton_engine_window_native_window(window) standardWindowButton:buttons[index]];
       if (button != nil) button.hidden = visible == 0;
     }
-    proton_engine_window_native_window(window)_button_visible = visible;
+    window->window_button_visible = visible;
     [proton_engine_window_native_window(window) layoutIfNeeded];
     return PROTON_OK;
   }

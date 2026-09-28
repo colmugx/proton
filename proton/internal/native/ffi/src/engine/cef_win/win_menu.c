@@ -386,15 +386,15 @@ static void proton_win_menu_apply_role(proton_engine_window_t *window,
     for (proton_engine_window_t *candidate = proton_engine_windows_head();
          candidate != NULL; candidate = candidate->next) {
       if (candidate != window && candidate->runtime == window->runtime &&
-          candidate->hwnd != NULL) {
-        ShowWindow(candidate->hwnd, SW_HIDE);
+          proton_engine_window_hwnd(candidate) != NULL) {
+        ShowWindow(proton_engine_window_hwnd(candidate), SW_HIDE);
       }
     }
   } else if (strcmp(role, "show_all") == 0) {
     for (proton_engine_window_t *candidate = proton_engine_windows_head();
          candidate != NULL; candidate = candidate->next) {
-      if (candidate->runtime == window->runtime && candidate->hwnd != NULL) {
-        ShowWindow(candidate->hwnd, SW_SHOW);
+      if (candidate->runtime == window->runtime && proton_engine_window_hwnd(candidate) != NULL) {
+        ShowWindow(proton_engine_window_hwnd(candidate), SW_SHOW);
       }
     }
   } else if (strcmp(role, "close") == 0) {

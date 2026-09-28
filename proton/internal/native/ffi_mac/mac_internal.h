@@ -140,34 +140,6 @@ void proton_engine_publish_native_theme_change(void);
 void proton_engine_native_theme_start_observing(void);
 void proton_engine_native_theme_stop_observing(void);
 
-static inline NSWindow *proton_engine_window_native_window(
-    const proton_engine_window_t *window) {
-  return window != NULL && window->platform != NULL
-             ? (__bridge NSWindow *)window->platform->native_window
-             : nil;
-}
-
-static inline void proton_engine_window_set_native_window(
-    proton_engine_window_t *window, NSWindow *native_window) {
-  if (window != NULL && window->platform != NULL) {
-    window->platform->native_window = (__bridge void *)native_window;
-  }
-}
-
-static inline NSView *proton_engine_window_content_view(
-    const proton_engine_window_t *window) {
-  return window != NULL && window->platform != NULL
-             ? (__bridge NSView *)window->platform->content_host
-             : nil;
-}
-
-static inline void proton_engine_window_set_content_view(
-    proton_engine_window_t *window, NSView *content_view) {
-  if (window != NULL && window->platform != NULL) {
-    window->platform->content_host = (__bridge void *)content_view;
-  }
-}
-
 struct proton_engine_window {
   proton_platform_window_t *platform;
   proton_engine_runtime_t *runtime;
@@ -225,6 +197,35 @@ struct proton_engine_window {
   struct proton_engine_view *views;
   struct proton_engine_window *next;
 };
+
+static inline NSWindow *proton_engine_window_native_window(
+    const proton_engine_window_t *window) {
+  return window != NULL && window->platform != NULL
+             ? (__bridge NSWindow *)window->platform->native_window
+             : nil;
+}
+
+static inline void proton_engine_window_set_native_window(
+    proton_engine_window_t *window, NSWindow *native_window) {
+  if (window != NULL && window->platform != NULL) {
+    window->platform->native_window = (__bridge void *)native_window;
+  }
+}
+
+static inline NSView *proton_engine_window_content_view(
+    const proton_engine_window_t *window) {
+  return window != NULL && window->platform != NULL
+             ? (__bridge NSView *)window->platform->content_host
+             : nil;
+}
+
+static inline void proton_engine_window_set_content_view(
+    proton_engine_window_t *window, NSView *content_view) {
+  if (window != NULL && window->platform != NULL) {
+    window->platform->content_host = (__bridge void *)content_view;
+  }
+}
+
 
 struct proton_engine_client {
   cef_client_t client;

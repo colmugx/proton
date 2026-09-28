@@ -1242,6 +1242,38 @@ int32_t proton_engine_window_attach_presentation(
   }
 }
 
+int32_t proton_engine_window_detach_presentation(
+    proton_engine_window_t *window, char *error, size_t error_len) {
+  @autoreleasepool {
+    if (window == NULL) {
+      proton_engine_set_message(error, error_len, "window is required");
+      return PROTON_ERR_INVALID_ARGUMENT;
+    }
+    if (window->browser_lifecycle == NULL) {
+      return PROTON_OK;
+    }
+    window->detach_presentation_requested = 1;
+    window->browser_create_pending = 0;
+    window->initial_navigation_pending = 0;
+    proton_engine_window_close_views(window);
+    if (proton_engine_window_browser(window) != NULL) {
+      proton_engine_bridge_pending_remove_browser(
+          window->runtime,
+          proton_browser_lifecycle_browser_id(window->browser_lifecycle));
+      if (!proton_engine_window_request_browser_close(window, 1)) {
+        proton_engine_set_message(error, error_len,
+                                  "browser host is not available for detach");
+        return PROTON_ERR_ENGINE;
+      }
+    } else {
+      proton_browser_lifecycle_creation_failed(window->browser_lifecycle);
+    }
+    proton_engine_window_defer_finalize(window);
+    proton_engine_window_finalize_if_ready(window);
+    return PROTON_OK;
+  }
+}
+
 static void proton_engine_window_free(proton_engine_window_t *window) {
   if (window == NULL) {
     return;
@@ -1315,6 +1347,22 @@ void proton_engine_window_finalize_if_ready(
       return;
     }
   }
+  if (window->detach_presentation_requested &&
+      !window->destroy_requested) {
+    proton_engine_window_free_views(window);
+    proton_browser_lifecycle_clear_owner(window->browser_lifecycle);
+    window->browser_lifecycle = NULL;
+    proton_engine_bridge_host_destroy(window->bridge);
+    window->bridge = NULL;
+    proton_browser_session_destroy(window->browser_session);
+    window->browser_session = NULL;
+    free(window->initial_url);
+    window->initial_url = NULL;
+    window->browser_view = nil;
+    window->finalize_after_browser_close = 0;
+    window->detach_presentation_requested = 0;
+    return;
+  }
   proton_engine_window_list_remove(window);
   proton_browser_lifecycle_clear_owner(window->browser_lifecycle);
   proton_engine_window_detach_native_window(window);
@@ -1329,6 +1377,7 @@ int32_t proton_engine_window_destroy(proton_engine_window_t *window,
       proton_engine_set_message(error, error_len, "window is required");
       return PROTON_ERR_INVALID_ARGUMENT;
     }
+    window->destroy_requested = 1;
     proton_engine_window_close_views(window);
     if (proton_engine_window_browser(window) != NULL) {
       if (!proton_engine_window_request_browser_close(window, 1)) {

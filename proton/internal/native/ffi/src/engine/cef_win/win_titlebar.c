@@ -283,8 +283,8 @@ static LRESULT CALLBACK proton_engine_overlay_child_proc(
     RemoveWindowSubclass(hwnd, proton_engine_overlay_child_proc, subclass_id);
     return DefSubclassProc(hwnd, msg, wparam, lparam);
   }
-  if (window == NULL || !window->titlebar_overlay || window->hwnd == NULL ||
-      !IsWindow(window->hwnd)) {
+  if (window == NULL || !window->titlebar_overlay || proton_engine_window_hwnd(window) == NULL ||
+      !IsWindow(proton_engine_window_hwnd(window))) {
     return DefSubclassProc(hwnd, msg, wparam, lparam);
   }
 
@@ -297,7 +297,7 @@ static LRESULT CALLBACK proton_engine_overlay_child_proc(
   }
 
   if (msg == WM_NCHITTEST) {
-    LRESULT hit = proton_engine_overlay_hit_test(window->hwnd, lparam);
+    LRESULT hit = proton_engine_overlay_hit_test(proton_engine_window_hwnd(window), lparam);
     if (hit != HTCLIENT && hit != HTNOWHERE) {
       return hit;
     }
@@ -305,7 +305,7 @@ static LRESULT CALLBACK proton_engine_overlay_child_proc(
               msg == WM_NCLBUTTONDBLCLK || msg == WM_NCRBUTTONDOWN ||
               msg == WM_NCRBUTTONUP || msg == WM_NCRBUTTONDBLCLK) &&
              wparam != HTCLIENT && wparam != HTNOWHERE) {
-    return SendMessageW(window->hwnd, msg, wparam, lparam);
+    return SendMessageW(proton_engine_window_hwnd(window), msg, wparam, lparam);
   }
   return DefSubclassProc(hwnd, msg, wparam, lparam);
 }
@@ -347,8 +347,8 @@ void proton_engine_overlay_clip_browser(proton_engine_window_t *window,
     return;
   }
   RECT buttons;
-  if (proton_engine_overlay_caption_buttons_rect(window->hwnd, &buttons)) {
-    MapWindowPoints(window->hwnd, NULL, (POINT *)&buttons, 2);
+  if (proton_engine_overlay_caption_buttons_rect(proton_engine_window_hwnd(window), &buttons)) {
+    MapWindowPoints(proton_engine_window_hwnd(window), NULL, (POINT *)&buttons, 2);
     OffsetRect(&buttons, -frame.left, -frame.top);
     proton_engine_overlay_subtract_rect(region, &buttons);
   }
@@ -430,8 +430,10 @@ LRESULT proton_engine_overlay_hit_test(HWND hwnd, LPARAM lparam) {
   const int client_left = client_origin.x - window_rect.left;
   const int client_top = client_origin.y - window_rect.top;
   RECT drag_strip = {0};
+  proton_platform_window_t *platform =
+      (proton_platform_window_t *)GetWindowLongPtrW(hwnd, GWLP_USERDATA);
   proton_engine_window_t *window =
-      (proton_engine_window_t *)GetWindowLongPtrW(hwnd, GWLP_USERDATA);
+      platform != NULL ? platform->backend : NULL;
   if (window == NULL || !window->draggable_regions_reported) {
     (void)proton_engine_overlay_drag_strip_rect(hwnd, &drag_strip);
   }

@@ -342,9 +342,15 @@ static void CEF_CALLBACK proton_engine_on_before_close(
   proton_browser_lifecycle_on_before_close(lifecycle, browser);
   if (window != NULL) {
     proton_engine_window_close_views(window);
+    if (window->detach_presentation_requested &&
+        !window->destroy_requested) {
+      proton_engine_window_finalize_if_ready(window);
+      proton_engine_signal_wait_source(PROTON_WAIT_PLATFORM);
+      return;
+    }
     proton_engine_window_mark_closed(window);
-    if (window->window != NULL) {
-      gtk_widget_destroy(window->window);
+    if (proton_engine_window_native_widget(window) != NULL) {
+      gtk_widget_destroy(proton_engine_window_native_widget(window));
     }
     proton_engine_window_finalize_if_ready(window);
   }

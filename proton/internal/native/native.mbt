@@ -1539,39 +1539,28 @@ pub fn Window::Window(
   let platform_handle = Ref(@native_ffi.window_null())
   check_status(
     @native_ffi.platform_window_create(
-      runtime.platform.handle, config.width, config.height, platform_handle,
+      runtime.platform.handle,
+      @ffi.to_cstr(config.title),
+      config.width,
+      config.height,
+      window_size_hint_code(config.size_hint),
+      runtime_config_bool(config.titlebar_style is TitlebarStyle::Overlay),
+      config.theme_preference.native_value(),
+      runtime_config_bool(config.traffic_light_position is Some(_)),
+      config.traffic_light_position.map(p => p.0).unwrap_or(0),
+      config.traffic_light_position.map(p => p.1).unwrap_or(0),
+      runtime_config_string(config.framework_titlebar_minimize_label),
+      runtime_config_string(config.framework_titlebar_maximize_label),
+      runtime_config_string(config.framework_titlebar_restore_label),
+      runtime_config_string(config.framework_titlebar_close_label),
+      platform_handle,
     ),
   )
   let presentation = @cef_presentation.attach_surface(
     platform_handle.val,
     {
-      title: @ffi.to_cstr(config.title),
-      width: config.width,
-      height: config.height,
       initial_url: @ffi.to_cstr(config.initial_url),
-      size_hint: window_size_hint_code(config.size_hint),
-      titlebar_overlay: runtime_config_bool(
-        config.titlebar_style is TitlebarStyle::Overlay,
-      ),
-      theme_preference: config.theme_preference.native_value(),
-      button_position_custom: runtime_config_bool(
-        config.traffic_light_position is Some(_),
-      ),
-      button_position_x: config.traffic_light_position.map(p => p.0).unwrap_or(0),
-      button_position_y: config.traffic_light_position.map(p => p.1).unwrap_or(0),
       navigation_policy: browser_policy_code(config.browser.navigation),
-      titlebar_minimize_label: runtime_config_string(
-        config.framework_titlebar_minimize_label,
-      ),
-      titlebar_maximize_label: runtime_config_string(
-        config.framework_titlebar_maximize_label,
-      ),
-      titlebar_restore_label: runtime_config_string(
-        config.framework_titlebar_restore_label,
-      ),
-      titlebar_close_label: runtime_config_string(
-        config.framework_titlebar_close_label,
-      ),
       new_window_policy: browser_policy_code(config.browser.new_window),
       download_policy: browser_policy_code(config.browser.download),
       certificate_policy: browser_policy_code(config.browser.certificate),
@@ -1610,13 +1599,16 @@ pub fn Window::destroy(self : Window) -> Unit raise NativeError {
     WindowLive | WindowCloseRequested | WindowDestroying =>
       self.lifecycle = WindowDestroying
   }
-  let status = self.presentation.destroy()
-  if status < 0 {
-    raise native_error(status)
-  } else {
-    self.platform.handle = @native_ffi.window_null()
-    self.lifecycle = WindowDestroyed
+  let presentation_status = self.presentation.destroy()
+  if presentation_status < 0 {
+    raise native_error(presentation_status)
   }
+  let platform_status = @native_ffi.proton_window_destroy_ffi(self.platform.handle)
+  if platform_status < 0 {
+    raise native_error(platform_status)
+  }
+  self.platform.handle = @native_ffi.window_null()
+  self.lifecycle = WindowDestroyed
 }
 
 ///|

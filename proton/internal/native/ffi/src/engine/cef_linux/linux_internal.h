@@ -4,6 +4,7 @@
 /* Private contracts shared by the Linux engine translation units. */
 #include "../../proton_engine.h"
 #include "../../proton_event.h"
+#include "../../proton_platform_window.h"
 #include "../cef_common/bridge_client.h"
 #include "../cef_common/browser_lifecycle.h"
 #include "../cef_common/browser_session.h"
@@ -67,13 +68,12 @@ struct proton_engine_runtime {
 };
 
 struct proton_engine_window {
+  proton_platform_window_t *platform;
   proton_engine_runtime_t *runtime;
-  GtkWidget *window;
   GtkWidget *root_box;
   GtkWidget *menu_bar;
   GtkAccelGroup *menu_accel_group;
   GtkWidget *overlay;
-  GtkWidget *browser_host;
   GtkWidget *overlay_controls;
   GtkWidget *minimize_button;
   GtkWidget *maximize_button;
@@ -119,9 +119,39 @@ struct proton_engine_window {
   int closed;
   int closing;
   int destroy_requested;
+  int detach_presentation_requested;
   struct proton_engine_view *views;
   struct proton_engine_window *next;
 };
+
+static inline GtkWidget *proton_engine_window_native_widget(
+    const proton_engine_window_t *window) {
+  return window != NULL && window->platform != NULL
+             ? (GtkWidget *)window->platform->native_window
+             : NULL;
+}
+
+static inline void proton_engine_window_set_native_widget(
+    proton_engine_window_t *window, GtkWidget *widget) {
+  if (window != NULL && window->platform != NULL) {
+    window->platform->native_window = (void *)widget;
+  }
+}
+
+static inline GtkWidget *proton_engine_window_content_host(
+    const proton_engine_window_t *window) {
+  return window != NULL && window->platform != NULL
+             ? (GtkWidget *)window->platform->content_host
+             : NULL;
+}
+
+static inline void proton_engine_window_set_content_host(
+    proton_engine_window_t *window, GtkWidget *host) {
+  if (window != NULL && window->platform != NULL) {
+    window->platform->content_host = (void *)host;
+  }
+}
+
 
 void proton_engine_dialog_cancel_runtime(proton_engine_runtime_t *runtime);
 void proton_engine_dialog_cancel_window(proton_engine_window_t *window);

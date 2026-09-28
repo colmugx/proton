@@ -4,6 +4,7 @@
 /* Private contracts shared by the macOS engine translation units. */
 #include "../ffi/src/proton_engine.h"
 #include "../ffi/src/proton_event.h"
+#include "../ffi/src/proton_platform_window.h"
 
 #include "../ffi/src/engine/cef_common/bridge_client.h"
 #include "../ffi/src/engine/cef_common/browser_lifecycle.h"
@@ -140,9 +141,8 @@ void proton_engine_native_theme_start_observing(void);
 void proton_engine_native_theme_stop_observing(void);
 
 struct proton_engine_window {
+  proton_platform_window_t *platform;
   proton_engine_runtime_t *runtime;
-  NSWindow *window;
-  NSView *content_view;
   // Borrowed from CEF; the AppKit hierarchy owns the host view. Never release.
   NSView *browser_view;
   id delegate;
@@ -192,9 +192,40 @@ struct proton_engine_window {
   cef_rect_t osr_popup_rect;
   int closed;
   int closing;
+  int destroy_requested;
+  int detach_presentation_requested;
   struct proton_engine_view *views;
   struct proton_engine_window *next;
 };
+
+static inline NSWindow *proton_engine_window_native_window(
+    const proton_engine_window_t *window) {
+  return window != NULL && window->platform != NULL
+             ? (__bridge NSWindow *)window->platform->native_window
+             : nil;
+}
+
+static inline void proton_engine_window_set_native_window(
+    proton_engine_window_t *window, NSWindow *native_window) {
+  if (window != NULL && window->platform != NULL) {
+    window->platform->native_window = (__bridge void *)native_window;
+  }
+}
+
+static inline NSView *proton_engine_window_content_view(
+    const proton_engine_window_t *window) {
+  return window != NULL && window->platform != NULL
+             ? (__bridge NSView *)window->platform->content_host
+             : nil;
+}
+
+static inline void proton_engine_window_set_content_view(
+    proton_engine_window_t *window, NSView *content_view) {
+  if (window != NULL && window->platform != NULL) {
+    window->platform->content_host = (__bridge void *)content_view;
+  }
+}
+
 
 struct proton_engine_client {
   cef_client_t client;

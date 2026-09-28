@@ -213,6 +213,12 @@ int32_t proton_window_slot_create(proton_runtime_slot_t *runtime,
                             "failed to allocate window state");
   }
   window->runtime = runtime;
+  window->platform_window = proton_platform_window_alloc();
+  if (window->platform_window == NULL) {
+    free(window);
+    return proton_set_error(PROTON_ERR_ENGINE,
+                            "failed to allocate platform window state");
+  }
   window->lifecycle = PROTON_WINDOW_LIVE;
   window->presentation_surface = engine_window;
   window->width = width;
@@ -220,6 +226,7 @@ int32_t proton_window_slot_create(proton_runtime_slot_t *runtime,
   window->logical_id = logical_id;
   if (!proton_runtime_enqueue_window_event(runtime, PROTON_EVENT_WINDOW_CREATED,
                                            window->logical_id)) {
+    proton_platform_window_free(window->platform_window);
     free(window);
     return proton_set_error(PROTON_ERR_QUEUE_FAILED,
                             "failed to queue window_created event");
@@ -241,6 +248,7 @@ void proton_window_slot_destroy(proton_window_slot_t *window) {
   if (*cursor == window) {
     *cursor = window->next;
   }
+  proton_platform_window_free(window->platform_window);
   free(window);
 }
 
@@ -425,6 +433,14 @@ int32_t proton_destroy_windows_for_runtime(proton_runtime_slot_t *runtime) {
       char engine_error[512] = {0};
       int32_t status = proton_engine_window_destroy(
           window->presentation_surface, engine_error, sizeof(engine_error));
+      if (status != PROTON_OK) {
+        return proton_set_engine_status(status, engine_error);
+      }
+      window->presentation_surface = NULL;
+    } else {
+      char engine_error[512] = {0};
+      int32_t status = proton_platform_window_destroy_shell(
+          window->platform_window, engine_error, sizeof(engine_error));
       if (status != PROTON_OK) {
         return proton_set_engine_status(status, engine_error);
       }

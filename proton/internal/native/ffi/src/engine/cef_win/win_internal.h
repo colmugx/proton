@@ -4,6 +4,7 @@
 /* Private contracts shared by the Windows engine translation units. */
 #include "../../proton_engine.h"
 #include "../../proton_event.h"
+#include "../../proton_platform_window.h"
 #include "../cef_common/bridge_client.h"
 #include "../cef_common/browser_lifecycle.h"
 #include "../cef_common/browser_session.h"
@@ -62,8 +63,9 @@ void proton_engine_runtime_accessibility_requested(
  * synthetic WM_DPICHANGED through that same procedure. */
 void proton_engine_register_window_class(void);
 
+
 struct proton_engine_window {
-  HWND hwnd;
+  proton_platform_window_t *platform;
   proton_engine_runtime_t *runtime;
   proton_window_id_t public_window_id;
   proton_browser_lifecycle_t *browser_lifecycle;
@@ -118,6 +120,7 @@ struct proton_engine_window {
   uint64_t close_request_id;
   proton_browser_session_t *browser_session;
   int destroy_requested;
+  int detach_presentation_requested;
   int closed;
   struct proton_engine_view *views;
   int finalize_queued;
@@ -127,6 +130,22 @@ struct proton_engine_window {
   size_t app_menu_binding_count;
   struct proton_engine_window *next;
 };
+
+static inline HWND proton_engine_window_hwnd(
+    const proton_engine_window_t *window) {
+  return window != NULL && window->platform != NULL
+             ? (HWND)window->platform->native_window
+             : NULL;
+}
+
+static inline void proton_engine_window_set_hwnd(
+    proton_engine_window_t *window, HWND hwnd) {
+  if (window != NULL && window->platform != NULL) {
+    window->platform->native_window = (void *)hwnd;
+    window->platform->content_host = (void *)hwnd;
+  }
+}
+
 
 void proton_engine_dialog_cancel_runtime(proton_engine_runtime_t *runtime);
 void proton_engine_dialog_cancel_window(proton_engine_window_t *window);

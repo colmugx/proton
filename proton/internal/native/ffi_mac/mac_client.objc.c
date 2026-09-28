@@ -265,12 +265,12 @@ static void CEF_CALLBACK proton_engine_on_after_created(
     }
     host->base.release((cef_base_ref_counted_t *)host);
   }
-  if (window->content_view != nil && window->browser_view != nil &&
+  if (proton_engine_window_content_view(window) != nil && window->browser_view != nil &&
       window->browser_view.superview == nil) {
-    [window->content_view addSubview:window->browser_view];
+    [proton_engine_window_content_view(window) addSubview:window->browser_view];
   }
-  if (window->content_view != nil && window->browser_view != nil) {
-    [window->browser_view setFrame:window->content_view.bounds];
+  if (proton_engine_window_content_view(window) != nil && window->browser_view != nil) {
+    [window->browser_view setFrame:proton_engine_window_content_view(window).bounds];
     [window->browser_view setAutoresizingMask:NSViewWidthSizable |
                                           NSViewHeightSizable];
   }
@@ -329,9 +329,15 @@ static void CEF_CALLBACK proton_engine_on_before_close(
   proton_browser_lifecycle_on_before_close(lifecycle, browser);
   if (window != NULL) {
     proton_engine_window_close_views(window);
+    if (window->detach_presentation_requested &&
+        !window->destroy_requested) {
+      proton_engine_window_finalize_if_ready(window);
+      proton_engine_signal_wait_source(PROTON_WAIT_PLATFORM);
+      return;
+    }
     proton_engine_window_mark_closed(window);
-    if (window->window != nil && !window->appkit_closing) {
-      [window->window close];
+    if (proton_engine_window_native_window(window) != nil && !window->appkit_closing) {
+      [proton_engine_window_native_window(window) close];
     }
     proton_engine_window_finalize_if_ready(window);
   }
@@ -376,6 +382,14 @@ static int CEF_CALLBACK proton_engine_do_close(cef_life_span_handler_t *self,
   }
   proton_engine_window_t *window =
       (proton_engine_window_t *)proton_browser_lifecycle_owner(lifecycle);
+  if (window != NULL && window->detach_presentation_requested &&
+      !window->destroy_requested) {
+    if (window->browser_view != nil) {
+      [window->browser_view removeFromSuperview];
+      window->browser_view = nil;
+    }
+    return 1;
+  }
   if (window != NULL) {
     window->cef_allows_appkit_close = 1;
   }

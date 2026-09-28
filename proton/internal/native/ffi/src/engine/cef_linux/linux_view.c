@@ -108,7 +108,9 @@ void proton_engine_view_finalize_if_ready(proton_engine_view_t *view) {
 }
 
 void proton_engine_window_finalize_if_ready(proton_engine_window_t *window) {
-  if (window == NULL || !window->destroy_requested) {
+  if (window == NULL ||
+      (!window->destroy_requested &&
+       !window->detach_presentation_requested)) {
     return;
   }
   proton_browser_lifecycle_state_t browser_state =
@@ -122,6 +124,22 @@ void proton_engine_window_finalize_if_ready(proton_engine_window_t *window) {
     if (!view->finalized) {
       return;
     }
+  }
+  if (window->detach_presentation_requested &&
+      !window->destroy_requested) {
+    proton_engine_window_free_views(window);
+    proton_browser_lifecycle_clear_owner(window->browser_lifecycle);
+    window->browser_lifecycle = NULL;
+    proton_engine_bridge_host_destroy(window->bridge);
+    window->bridge = NULL;
+    proton_browser_session_destroy(window->browser_session);
+    window->browser_session = NULL;
+    free(window->draggable_regions);
+    window->draggable_regions = NULL;
+    window->draggable_region_count = 0;
+    window->draggable_regions_reported = 0;
+    window->detach_presentation_requested = 0;
+    return;
   }
   proton_engine_window_defer_free(window);
 }
@@ -310,8 +328,8 @@ static int32_t proton_engine_view_create_browser(
   window_info.size = sizeof(window_info);
   browser_settings.size = sizeof(browser_settings);
   if (!window->headless &&
-      (window->browser_host == NULL ||
-       gtk_widget_get_window(window->browser_host) == NULL)) {
+      (proton_engine_window_content_host(window) == NULL ||
+       gtk_widget_get_window(proton_engine_window_content_host(window)) == NULL)) {
     proton_engine_set_message(error, error_len,
                               "window is not ready for view browser creation");
     return PROTON_ERR_INVALID_ARGUMENT;
@@ -320,7 +338,7 @@ static int32_t proton_engine_view_create_browser(
     window_info.windowless_rendering_enabled = 1;
     window_info.runtime_style = CEF_RUNTIME_STYLE_ALLOY;
   } else {
-    GdkWindow *host_gdk_window = gtk_widget_get_window(window->browser_host);
+    GdkWindow *host_gdk_window = gtk_widget_get_window(proton_engine_window_content_host(window));
     view->display = GDK_WINDOW_XDISPLAY(host_gdk_window);
     window_info.parent_window =
         (cef_window_handle_t)GDK_WINDOW_XID(host_gdk_window);

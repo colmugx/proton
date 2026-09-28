@@ -701,6 +701,7 @@ static void proton_engine_window_free_storage(
   proton_engine_bridge_host_destroy(window->bridge);
   proton_browser_session_destroy(window->browser_session);
   free(window->draggable_regions);
+  proton_platform_window_backend_finalized(window->platform, window);
   free(window);
 }
 
@@ -711,7 +712,7 @@ void proton_engine_free_closed_windows(void) {
     // OnBeforeClose posts native destruction for a later Win32 message pass.
     // WM_DESTROY still needs the record to re-enable a modal parent and clean
     // up menus and icons. Keep it in the shutdown readiness check until then.
-    if (window->hwnd != NULL) {
+    if (proton_engine_window_hwnd(window) != NULL) {
       cursor = &window->next;
       continue;
     }
@@ -724,7 +725,7 @@ void proton_engine_free_closed_windows(void) {
 int proton_engine_closed_windows_ready_for_shutdown(void) {
   for (proton_engine_window_t *window = g_proton_engine_closed_windows;
        window != NULL; window = window->next) {
-    if (window->hwnd != NULL) {
+    if (proton_engine_window_hwnd(window) != NULL) {
       return 0;
     }
   }
@@ -811,13 +812,19 @@ static void CEF_CALLBACK proton_engine_on_before_close(
   if (window == NULL) {
     return;
   }
+  if (window->detach_presentation_requested &&
+      !window->destroy_requested) {
+    proton_engine_signal_wait_source(window->runtime, PROTON_WAIT_PLATFORM);
+    proton_engine_window_finalize_if_ready(window);
+    return;
+  }
   window->closed = 1;
-  if (window->hwnd != NULL) {
+  if (proton_engine_window_hwnd(window) != NULL) {
     // CEF keeps unwinding the browser teardown after this callback returns,
     // and on the external message pump route it can still touch frame-window
     // state. Defer the frame destruction to a later pump instead of tearing
     // it down inline here.
-    PostMessageW(window->hwnd, PROTON_ENGINE_WM_DESTROY_SELF, 0, 0);
+    PostMessageW(proton_engine_window_hwnd(window), PROTON_ENGINE_WM_DESTROY_SELF, 0, 0);
   }
   proton_engine_signal_wait_source(window->runtime, PROTON_WAIT_PLATFORM);
   proton_engine_window_finalize_if_ready(window);

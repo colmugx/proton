@@ -545,25 +545,29 @@ pub extern "C" fn proton_system_accessibility_client_trusted_ffi(
 ) -> Int = "proton_system_accessibility_client_trusted"
 
 ///|
-#borrow(out_window)
+#borrow(title, titlebar_minimize_label, titlebar_maximize_label, titlebar_restore_label, titlebar_close_label, out_window)
 pub extern "C" fn platform_window_create(
-  runtime : RuntimeHandle, width : Int, height : Int,
-  out_window : Ref[WindowHandle],
+  runtime : RuntimeHandle, title : Bytes, width : Int, height : Int,
+  size_hint : Int, titlebar_overlay : Int, theme_preference : Int,
+  button_position_custom : Int, button_position_x : Int,
+  button_position_y : Int, titlebar_minimize_label : Bytes,
+  titlebar_maximize_label : Bytes, titlebar_restore_label : Bytes,
+  titlebar_close_label : Bytes, out_window : Ref[WindowHandle],
 ) -> Int = "proton_internal_platform_window_create"
 
 ///|
-#borrow(title, initial_url, titlebar_minimize_label, titlebar_maximize_label, titlebar_restore_label, titlebar_close_label, bridge_config, web_request_config)
+#borrow(initial_url, bridge_config, web_request_config)
 pub extern "C" fn cef_surface_attach(
-  window : WindowHandle, title : Bytes, width : Int, height : Int,
-  initial_url : Bytes, size_hint : Int, titlebar_overlay : Int,
-  theme_preference : Int, button_position_custom : Int,
-  button_position_x : Int, button_position_y : Int, navigation_policy : Int,
-  titlebar_minimize_label : Bytes, titlebar_maximize_label : Bytes,
-  titlebar_restore_label : Bytes, titlebar_close_label : Bytes,
+  window : WindowHandle, initial_url : Bytes, navigation_policy : Int,
   new_window_policy : Int, download_policy : Int, certificate_policy : Int,
   media_policy : Int, devtools : Int, bridge_config : BridgeConfigHandle,
   web_request_config : WebRequestConfigHandle,
 ) -> Int = "proton_internal_cef_surface_attach"
+
+///|
+pub extern "C" fn cef_surface_detach(
+  window : WindowHandle,
+) -> Int = "proton_internal_cef_surface_detach"
 
 ///|
 #borrow(title, initial_url, titlebar_minimize_label, titlebar_maximize_label, titlebar_restore_label, titlebar_close_label, bridge_config, web_request_config, out_window)

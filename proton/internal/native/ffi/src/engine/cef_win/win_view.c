@@ -52,7 +52,7 @@ static uint64_t g_next_view_native_id = 1;
  * SetWindowPos both take physical pixels; headless bounds stay logical. */
 static cef_rect_t proton_engine_view_pixel_bounds(proton_engine_view_t *view) {
   UINT dpi = view->window->headless ? USER_DEFAULT_SCREEN_DPI
-                                  : proton_win_window_dpi(view->window->hwnd);
+                                  : proton_win_window_dpi(view->proton_engine_window_hwnd(window));
   cef_rect_t bounds = {
       MulDiv(view->x, dpi, USER_DEFAULT_SCREEN_DPI),
       MulDiv(view->y, dpi, USER_DEFAULT_SCREEN_DPI),
@@ -123,7 +123,8 @@ void proton_engine_view_finalize_if_ready(proton_engine_view_t *view) {
 
 void proton_engine_window_finalize_if_ready(proton_engine_window_t *window) {
   if (window == NULL || window->finalize_queued ||
-      !window->destroy_requested) {
+      (!window->destroy_requested &&
+       !window->detach_presentation_requested)) {
     return;
   }
   proton_browser_lifecycle_state_t browser_state =
@@ -137,6 +138,22 @@ void proton_engine_window_finalize_if_ready(proton_engine_window_t *window) {
     if (!view->finalized) {
       return;
     }
+  }
+  if (window->detach_presentation_requested &&
+      !window->destroy_requested) {
+    proton_engine_window_free_views(window);
+    proton_browser_lifecycle_clear_owner(window->browser_lifecycle);
+    window->browser_lifecycle = NULL;
+    proton_engine_bridge_host_destroy(window->bridge);
+    window->bridge = NULL;
+    proton_browser_session_destroy(window->browser_session);
+    window->browser_session = NULL;
+    free(window->draggable_regions);
+    window->draggable_regions = NULL;
+    window->draggable_region_count = 0;
+    window->draggable_regions_reported = 0;
+    window->detach_presentation_requested = 0;
+    return;
   }
   // OnBeforeClose is CEF's final browser callback, but CEF still owns and
   // releases callback objects while unwinding it and during cef_shutdown.
@@ -235,7 +252,7 @@ int CEF_CALLBACK proton_engine_do_close(
   // destroy the browser's child window on the next frame-window message,
   // which completes the teardown via WindowDestroyed without re-entering CEF.
   if (view->hwnd != NULL) {
-    PostMessageW(view->window->hwnd, PROTON_ENGINE_WM_DESTROY_CHILD, 0,
+    PostMessageW(view->proton_engine_window_hwnd(window), PROTON_ENGINE_WM_DESTROY_CHILD, 0,
                  (LPARAM)view->hwnd);
     view->hwnd = NULL;
     return 1;
@@ -336,7 +353,7 @@ static int32_t proton_engine_view_create_browser(
     window_info.windowless_rendering_enabled = 1;
     window_info.runtime_style = CEF_RUNTIME_STYLE_ALLOY;
   } else {
-    window_info.parent_window = window->hwnd;
+    window_info.parent_window = proton_engine_window_hwnd(window);
     window_info.style =
         WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS;
   }

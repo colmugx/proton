@@ -55,14 +55,14 @@ int proton_engine_browser_view_is_focused(NSView *browser_view) {
 
 static void proton_engine_apply_size_constraints(
     proton_engine_window_t *window) {
-  if (window == NULL || window->window == nil) {
+  if (window == NULL || proton_engine_window_native_window(window) == nil) {
     return;
   }
-  [window->window
+  [proton_engine_window_native_window(window)
       setMinSize:window->min_width > 0
                      ? NSMakeSize(window->min_width, window->min_height)
                      : NSZeroSize];
-  [window->window
+  [proton_engine_window_native_window(window)
       setMaxSize:window->max_width > 0
                      ? NSMakeSize(window->max_width, window->max_height)
                      : NSMakeSize(CGFLOAT_MAX, CGFLOAT_MAX)];
@@ -70,7 +70,7 @@ static void proton_engine_apply_size_constraints(
 
 static void proton_engine_window_apply_theme_preference(
     proton_engine_window_t *window) {
-  if (window == NULL || window->window == nil) {
+  if (window == NULL || proton_engine_window_native_window(window) == nil) {
     return;
   }
   // This can run directly from MoonBit, outside the event-pump pool.
@@ -78,15 +78,15 @@ static void proton_engine_window_apply_theme_preference(
   @autoreleasepool {
     switch (window->theme_preference) {
     case PROTON_WINDOW_THEME_PREFERENCE_LIGHT:
-      [window->window
+      [proton_engine_window_native_window(window)
           setAppearance:[NSAppearance appearanceNamed:NSAppearanceNameAqua]];
       break;
     case PROTON_WINDOW_THEME_PREFERENCE_DARK:
-      [window->window
+      [proton_engine_window_native_window(window)
           setAppearance:[NSAppearance appearanceNamed:NSAppearanceNameDarkAqua]];
       break;
     case PROTON_WINDOW_THEME_PREFERENCE_SYSTEM:
-      [window->window setAppearance:nil];
+      [proton_engine_window_native_window(window) setAppearance:nil];
       break;
     }
   }
@@ -95,8 +95,8 @@ static void proton_engine_window_apply_theme_preference(
 static proton_window_theme_t proton_engine_window_effective_theme(
     const proton_engine_window_t *window) {
   NSAppearance *appearance =
-      window != NULL && window->window != nil
-          ? window->window.effectiveAppearance
+      window != NULL && proton_engine_window_native_window(window) != nil
+          ? proton_engine_window_native_window(window).effectiveAppearance
           : NSApp.effectiveAppearance;
   NSAppearanceName match = [appearance
       bestMatchFromAppearancesWithNames:@[
@@ -340,7 +340,7 @@ int proton_engine_window_is_headless(proton_engine_window_t *window) {
 }
 
 NSWindow *proton_engine_window_get_native_window(proton_engine_window_t *window) {
-  return window != NULL ? window->window : nil;
+  return window != NULL ? proton_engine_window_native_window(window) : nil;
 }
 
 NSWindow *proton_engine_window_retain_native_window(
@@ -351,7 +351,7 @@ NSWindow *proton_engine_window_retain_native_window(
 
 int proton_engine_window_is_closed_or_missing(proton_engine_window_t *window) {
   return window == NULL || window->closed ||
-         (!window->headless && window->window == nil);
+         (!window->headless && proton_engine_window_native_window(window) == nil);
 }
 
 proton_engine_window_t *proton_engine_window_lookup_native_id(
@@ -360,7 +360,7 @@ proton_engine_window_t *proton_engine_window_lookup_native_id(
 }
 
 cef_browser_t *proton_engine_window_browser(proton_engine_window_t *window) {
-  return window != NULL
+  return window != NULL && window->browser_lifecycle != NULL
              ? proton_browser_lifecycle_browser(window->browser_lifecycle)
              : NULL;
 }
@@ -398,7 +398,7 @@ proton_engine_window_public_id_for_native_window(NSWindow *native_window) {
   }
   for (proton_engine_window_t *window = g_windows; window != NULL;
        window = window->next) {
-    if (window->window == native_window) {
+    if (proton_engine_window_native_window(window) == native_window) {
       return window->public_window_id;
     }
   }
@@ -452,7 +452,7 @@ void proton_engine_window_mark_closed(proton_engine_window_t *window) {
 
 static void proton_engine_window_commit_appkit_close(
     proton_engine_window_t *window, NSWindow *native_window) {
-  if (window == NULL || native_window == nil || window->window == nil) {
+  if (window == NULL || native_window == nil || proton_engine_window_native_window(window) == nil) {
     return;
   }
   window->appkit_closing = 1;
@@ -470,8 +470,8 @@ static void proton_engine_window_commit_appkit_close(
         proton_browser_lifecycle_browser_id(window->browser_lifecycle));
   }
   NSView *browser_view = window->browser_view;
-  window->window = nil;
-  window->content_view = nil;
+  proton_engine_window_set_native_window(window, nil);
+  proton_engine_window_set_content_view(window, nil);
   proton_engine_signal_wait_source(PROTON_WAIT_PLATFORM);
 
   // A windowed CEF browser completes close only after CefBrowserHostView is
@@ -492,25 +492,25 @@ static void proton_engine_window_commit_appkit_close(
 
 static void proton_engine_window_apply_closable_style(
     proton_engine_window_t *window) {
-  if (window == NULL || window->window == nil) {
+  if (window == NULL || proton_engine_window_native_window(window) == nil) {
     return;
   }
-  NSWindowStyleMask style = window->window.styleMask;
+  NSWindowStyleMask style = proton_engine_window_native_window(window).styleMask;
   if (window->closable || window->programmatic_close_pending) {
     style |= NSWindowStyleMaskClosable;
   } else {
     style &= ~NSWindowStyleMaskClosable;
   }
-  window->window.styleMask = style;
+  proton_engine_window_native_window(window).styleMask = style;
 }
 
 static void proton_engine_window_update_zoom_button(
     proton_engine_window_t *window) {
-  if (window == NULL || window->window == nil) return;
-  NSButton *button = [window->window standardWindowButton:NSWindowZoomButton];
+  if (window == NULL || proton_engine_window_native_window(window) == nil) return;
+  NSButton *button = [proton_engine_window_native_window(window) standardWindowButton:NSWindowZoomButton];
   if (button != nil) {
     const BOOL resizable =
-        (window->window.styleMask & NSWindowStyleMaskResizable) != 0;
+        (proton_engine_window_native_window(window).styleMask & NSWindowStyleMaskResizable) != 0;
     button.enabled = resizable &&
                      (window->maximizable || window->fullscreenable);
   }
@@ -524,12 +524,12 @@ proton_engine_window_titlebar_area(
           window != NULL && window->zoom_percent > 0 ? window->zoom_percent
                                                      : 100,
   };
-  if (window == NULL || !window->titlebar_overlay || window->window == nil ||
-      window->content_view == nil ||
-      (window->window.styleMask & NSWindowStyleMaskFullScreen) != 0) {
+  if (window == NULL || !window->titlebar_overlay || proton_engine_window_native_window(window) == nil ||
+      proton_engine_window_content_view(window) == nil ||
+      (proton_engine_window_native_window(window).styleMask & NSWindowStyleMaskFullScreen) != 0) {
     return area;
   }
-  NSRect content_bounds = window->content_view.bounds;
+  NSRect content_bounds = proton_engine_window_content_view(window).bounds;
   if (NSWidth(content_bounds) <= 0.0 || NSHeight(content_bounds) <= 0.0) {
     return area;
   }
@@ -540,11 +540,11 @@ proton_engine_window_titlebar_area(
   for (size_t index = 0;
        index < sizeof(button_types) / sizeof(button_types[0]); index++) {
     NSButton *button =
-        [window->window standardWindowButton:button_types[index]];
+        [proton_engine_window_native_window(window) standardWindowButton:button_types[index]];
     if (button == nil || button.superview == nil) {
       continue;
     }
-    NSRect rect = [window->content_view convertRect:button.bounds
+    NSRect rect = [proton_engine_window_content_view(window) convertRect:button.bounds
                                            fromView:button];
     if (NSWidth(rect) <= 0.0 || NSHeight(rect) <= 0.0) {
       continue;
@@ -612,10 +612,10 @@ int32_t proton_engine_window_get_titlebar_area(
   BOOL saved_button_layout;
   CGFloat default_container_height;
   NSRect default_button_frames[3];
-  proton_engine_window_t *button_owner;
+  proton_platform_window_t *button_owner;
 }
 - (void)layoutProtonButtons;
-- (void)setButtonOwner:(proton_engine_window_t *)owner;
+- (void)setButtonOwner:(proton_platform_window_t *)owner;
 - (void)setProtonFocusable:(BOOL)focusable;
 - (void)setProtonEnabled:(BOOL)enabled;
 @end
@@ -640,14 +640,15 @@ int32_t proton_engine_window_get_titlebar_area(
   return self;
 }
 
-- (void)setButtonOwner:(proton_engine_window_t *)owner {
+- (void)setButtonOwner:(proton_platform_window_t *)owner {
   button_owner = owner;
 }
 
 - (void)layoutProtonButtons {
-  proton_engine_window_t *owner = button_owner;
+  proton_engine_window_t *owner =
+      button_owner != NULL ? button_owner->backend : NULL;
   if (laying_out_buttons || owner == NULL || !owner->titlebar_overlay ||
-      owner->content_view == nil || (self.styleMask & NSWindowStyleMaskFullScreen)) {
+      proton_engine_window_content_view(owner) == nil || (self.styleMask & NSWindowStyleMaskFullScreen)) {
     return;
   }
   if (!owner->button_position_custom && !saved_button_layout) {
@@ -694,11 +695,11 @@ int32_t proton_engine_window_get_titlebar_area(
   for (int i = 0; i < 3; i++) {
     NSRect rect = default_button_frames[i];
     rect.origin.y += height - default_container_height;
-    targets[i] = [owner->content_view convertRect:rect fromView:container];
+    targets[i] = [proton_engine_window_content_view(owner) convertRect:rect fromView:container];
   }
   if (owner->button_position_custom) {
     NSRect cluster = NSUnionRect(NSUnionRect(targets[0], targets[1]), targets[2]);
-    NSRect bounds = owner->content_view.bounds;
+    NSRect bounds = proton_engine_window_content_view(owner).bounds;
     CGFloat dx = NSMinX(bounds) + owner->button_position_x - NSMinX(cluster);
     CGFloat dy = NSMaxY(bounds) - owner->button_position_y - NSMaxY(cluster);
     for (int i = 0; i < 3; i++) {
@@ -708,7 +709,7 @@ int32_t proton_engine_window_get_titlebar_area(
   }
   for (int i = 0; i < 3; i++) {
     NSRect target = [button_parent convertRect:targets[i]
-                                    fromView:owner->content_view];
+                                    fromView:proton_engine_window_content_view(owner)];
     if (!NSEqualRects(buttons[i].frame, target)) {
       [buttons[i] setFrame:target];
     }
@@ -750,14 +751,16 @@ int32_t proton_engine_window_get_titlebar_area(
 
 @interface ProtonWindowDelegate : NSObject <NSWindowDelegate> {
 @public
-  proton_engine_window_t *window;
+  proton_platform_window_t *platform;
 }
 @end
 
 @implementation ProtonWindowDelegate
 - (void)windowStateDidChange:(NSNotification *)notification {
   (void)notification;
-  if (window != NULL) [window->window layoutIfNeeded];
+  proton_engine_window_t *window =
+      platform != NULL ? platform->backend : NULL;
+  if (window != NULL) [proton_engine_window_native_window(window) layoutIfNeeded];
   proton_engine_signal_wait_source(PROTON_WAIT_PLATFORM);
 }
 
@@ -803,6 +806,8 @@ int32_t proton_engine_window_get_titlebar_area(
 
 - (BOOL)windowShouldClose:(id)sender {
   NSWindow *native_window = sender;
+  proton_engine_window_t *window =
+      platform != NULL ? platform->backend : NULL;
   if (window == NULL) {
     return YES;
   }
@@ -857,6 +862,8 @@ int32_t proton_engine_window_get_titlebar_area(
 }
 
 - (void)windowWillClose:(NSNotification *)notification {
+  proton_engine_window_t *window =
+      platform != NULL ? platform->backend : NULL;
   if (window == NULL) {
     return;
   }
@@ -866,13 +873,15 @@ int32_t proton_engine_window_get_titlebar_area(
 
 @interface ProtonContentView : NSView {
 @public
-  proton_engine_window_t *window;
+  proton_platform_window_t *platform;
 }
 @end
 
 @implementation ProtonContentView
 - (void)viewDidChangeEffectiveAppearance {
   [super viewDidChangeEffectiveAppearance];
+  proton_engine_window_t *window =
+      platform != NULL ? platform->backend : NULL;
   if (window != NULL) {
     proton_engine_signal_wait_source(PROTON_WAIT_PLATFORM);
   }
@@ -949,8 +958,8 @@ static int32_t proton_engine_window_create_browser(
   memset(&browser_settings, 0, sizeof(browser_settings));
   window_info.size = sizeof(window_info);
   browser_settings.size = sizeof(browser_settings);
-  if (window->content_view != nil) {
-    window_info.parent_view = (__bridge void *)window->content_view;
+  if (proton_engine_window_content_view(window) != nil) {
+    window_info.parent_view = (__bridge void *)proton_engine_window_content_view(window);
   }
   if (window->headless) {
     window_info.windowless_rendering_enabled = 1;
@@ -990,13 +999,15 @@ int32_t proton_engine_window_create(
       return PROTON_ERR_INVALID_ARGUMENT;
     }
     *out_window = NULL;
-    if (runtime == NULL || input_config == NULL ||
-        !proton_engine_runtime_initialized()) {
+    if (input_config == NULL ||
+        (!input_config->defer_presentation &&
+         (runtime == NULL || !proton_engine_runtime_initialized()))) {
       proton_engine_set_message(error, error_len, "runtime is not initialized");
       return PROTON_ERR_NOT_INITIALIZED;
     }
     proton_engine_window_config_t config = *input_config;
-    if (runtime->headless && config.titlebar_overlay) {
+    const int headless = runtime != NULL ? runtime->headless : 0;
+    if (headless && config.titlebar_overlay) {
       proton_engine_set_message(
           error, error_len,
           "titlebar overlay is not supported in headless mode");
@@ -1010,6 +1021,7 @@ int32_t proton_engine_window_create(
                                 "failed to allocate window state");
       return PROTON_ERR_ENGINE;
     }
+    window->platform = config.platform_window;
     window->runtime = runtime;
     window->public_window_id = config.public_window;
     window->native_id = g_next_window_native_id++;
@@ -1033,41 +1045,45 @@ int32_t proton_engine_window_create(
     window->closable = 1;
     window->fullscreenable = 1;
     window->enabled = 1;
-    window->headless = runtime->headless;
-    window->bridge = proton_engine_bridge_host_create(
-        runtime, config.public_window, config.bridge_config);
-    window->browser_session = proton_browser_session_create(
-        &config.browser_policy, config.web_request_config,
-        proton_engine_browser_signal, NULL);
-    window->browser_lifecycle = proton_browser_lifecycle_create(
-        runtime->browsers, PROTON_BROWSER_ROLE_MAIN, window, NULL);
-    if (window->bridge == NULL || window->browser_session == NULL ||
-        window->browser_lifecycle == NULL) {
-      proton_browser_lifecycle_creation_failed(window->browser_lifecycle);
-      proton_engine_bridge_host_destroy(window->bridge);
-      proton_browser_session_destroy(window->browser_session);
-      free(window);
-      proton_engine_set_message(error, error_len,
-                                "failed to allocate browser state");
-      return PROTON_ERR_ENGINE;
+    window->headless = headless;
+    if (!config.defer_presentation) {
+      window->bridge = proton_engine_bridge_host_create(
+          runtime, config.public_window, config.bridge_config);
+      window->browser_session = proton_browser_session_create(
+          &config.browser_policy, config.web_request_config,
+          proton_engine_browser_signal, NULL);
+      window->browser_lifecycle = proton_browser_lifecycle_create(
+          runtime->browsers, PROTON_BROWSER_ROLE_MAIN, window, NULL);
+      if (window->bridge == NULL || window->browser_session == NULL ||
+          window->browser_lifecycle == NULL) {
+        proton_browser_lifecycle_creation_failed(window->browser_lifecycle);
+        proton_engine_bridge_host_destroy(window->bridge);
+        proton_browser_session_destroy(window->browser_session);
+        proton_platform_window_backend_finalized(window->platform, window);
+        free(window);
+        proton_engine_set_message(error, error_len,
+                                  "failed to allocate browser state");
+        return PROTON_ERR_ENGINE;
+      }
+      proton_browser_session_bind_window(window->browser_session,
+                                         config.public_window);
+      proton_browser_session_bind_lifecycle(window->browser_session,
+                                            window->browser_lifecycle);
+      proton_engine_client_t *client = proton_engine_client_create(
+          window->browser_lifecycle, config.web_request_config);
+      if (client == NULL) {
+        proton_browser_lifecycle_creation_failed(window->browser_lifecycle);
+        proton_browser_lifecycle_clear_owner(window->browser_lifecycle);
+        proton_browser_session_destroy(window->browser_session);
+        proton_engine_bridge_host_destroy(window->bridge);
+        proton_platform_window_backend_finalized(window->platform, window);
+        free(window);
+        proton_engine_set_message(error, error_len, "failed to allocate client");
+        return PROTON_ERR_ENGINE;
+      }
+      proton_browser_lifecycle_set_client(window->browser_lifecycle,
+                                          &client->client);
     }
-    proton_browser_session_bind_window(window->browser_session,
-                                       config.public_window);
-    proton_browser_session_bind_lifecycle(window->browser_session,
-                                          window->browser_lifecycle);
-    proton_engine_client_t *client = proton_engine_client_create(
-        window->browser_lifecycle, config.web_request_config);
-    if (client == NULL) {
-      proton_browser_lifecycle_creation_failed(window->browser_lifecycle);
-      proton_browser_lifecycle_clear_owner(window->browser_lifecycle);
-      proton_browser_session_destroy(window->browser_session);
-      proton_engine_bridge_host_destroy(window->bridge);
-      free(window);
-      proton_engine_set_message(error, error_len, "failed to allocate client");
-      return PROTON_ERR_ENGINE;
-    }
-    proton_browser_lifecycle_set_client(window->browser_lifecycle,
-                                        &client->client);
 
     ProtonWindowDelegate *delegate = nil;
     if (!window->headless) {
@@ -1081,77 +1097,207 @@ int32_t proton_engine_window_create(
         style |= NSWindowStyleMaskFullSizeContentView;
       }
       NSString *title = [NSString stringWithUTF8String:config.title];
-      window->window = [[ProtonWindow alloc] initWithContentRect:rect
-                                                   styleMask:style
-                                                     backing:NSBackingStoreBuffered
-                                                       defer:NO];
-      if (window->window == nil) {
+      NSWindow *native_window =
+          [[ProtonWindow alloc] initWithContentRect:rect
+                                         styleMask:style
+                                           backing:NSBackingStoreBuffered
+                                             defer:NO];
+      proton_engine_window_set_native_window(window, native_window);
+      if (proton_engine_window_native_window(window) == nil) {
         proton_browser_lifecycle_creation_failed(window->browser_lifecycle);
         proton_browser_lifecycle_clear_owner(window->browser_lifecycle);
         proton_browser_session_destroy(window->browser_session);
         proton_engine_bridge_host_destroy(window->bridge);
+        proton_platform_window_backend_finalized(window->platform, window);
         free(window);
         proton_engine_set_message(error, error_len, "window creation failed");
         return PROTON_ERR_PLATFORM;
+      }
+      if (window->platform != NULL) {
+        window->platform->backend = window;
       }
       // The close delegate tears down the CEF view hierarchy before releasing
       // the window from the message-pump autorelease pool. Releasing directly in
       // AppKit's close callback can destroy CEF state while that callback is
       // still on the stack.
-      [window->window setReleasedWhenClosed:NO];
+      [proton_engine_window_native_window(window) setReleasedWhenClosed:NO];
       // Proton owns window restoration through its application manifest and
       // runtime session. Letting AppKit persist the same windows creates a second
       // lifecycle owner and can block startup on its crash-recovery UI before
       // Proton has created a window of its own.
-      [window->window setRestorable:NO];
-      [window->window disableSnapshotRestoration];
-      [window->window setTitle:title != nil ? title : @"Proton"];
+      [proton_engine_window_native_window(window) setRestorable:NO];
+      [proton_engine_window_native_window(window) disableSnapshotRestoration];
+      [proton_engine_window_native_window(window) setTitle:title != nil ? title : @"Proton"];
       proton_engine_window_apply_theme_preference(window);
       proton_engine_apply_size_constraints(window);
       if (config.titlebar_overlay) {
-        [window->window setTitleVisibility:NSWindowTitleHidden];
-        [window->window setTitlebarAppearsTransparent:YES];
+        [proton_engine_window_native_window(window) setTitleVisibility:NSWindowTitleHidden];
+        [proton_engine_window_native_window(window) setTitlebarAppearsTransparent:YES];
       }
-      [window->window center];
+      [proton_engine_window_native_window(window) center];
       ProtonContentView *content_view = [[ProtonContentView alloc]
-          initWithFrame:[[window->window contentView] bounds]];
-      content_view->window = window;
+          initWithFrame:[[proton_engine_window_native_window(window) contentView] bounds]];
+      content_view->platform = window->platform;
       [content_view setAutoresizingMask:NSViewWidthSizable |
                                         NSViewHeightSizable];
-      [window->window setContentView:content_view];
-      window->content_view = content_view;
+      [proton_engine_window_native_window(window) setContentView:content_view];
+      proton_engine_window_set_content_view(window, content_view);
       [content_view release];
       delegate = [[ProtonWindowDelegate alloc] init];
-      delegate->window = window;
+      delegate->platform = window->platform;
       window->delegate = delegate;
-      [window->window setDelegate:delegate];
-      [(ProtonWindow *)window->window setButtonOwner:window];
-      [window->window layoutIfNeeded];
+      [proton_engine_window_native_window(window) setDelegate:delegate];
+      [(ProtonWindow *)proton_engine_window_native_window(window) setButtonOwner:window->platform];
+      [proton_engine_window_native_window(window) layoutIfNeeded];
     }
 
-    window->initial_url =
-        proton_engine_strdup(config.initial_url[0] != '\0' ? config.initial_url
-                                                           : "about:blank");
-    if (window->initial_url == NULL) {
-      if (window->window != nil) {
-        [window->window close];
+    if (!config.defer_presentation) {
+      window->initial_url =
+          proton_engine_strdup(config.initial_url[0] != '\0' ? config.initial_url
+                                                             : "about:blank");
+      if (window->initial_url == NULL) {
+        if (proton_engine_window_native_window(window) != nil) {
+          [proton_engine_window_native_window(window) close];
+        }
+        if (delegate != nil) {
+          [delegate release];
+        }
+        proton_browser_lifecycle_creation_failed(window->browser_lifecycle);
+        proton_browser_lifecycle_clear_owner(window->browser_lifecycle);
+        proton_browser_session_destroy(window->browser_session);
+        proton_engine_bridge_host_destroy(window->bridge);
+        proton_platform_window_backend_finalized(window->platform, window);
+        free(window);
+        proton_engine_set_message(error, error_len,
+                                  "failed to copy initial browser url");
+        return PROTON_ERR_ENGINE;
       }
-      if (delegate != nil) {
-        [delegate release];
-      }
+      window->browser_create_pending = 1;
+      proton_engine_window_list_add(window);
+      proton_engine_signal_wait_source(PROTON_WAIT_PLATFORM);
+      *out_window = window;
+      return PROTON_OK;    } else {
+      proton_engine_window_list_add(window);
+      *out_window = window;
+      return PROTON_OK;
+    }
+  }
+}
+
+
+int32_t proton_engine_window_attach_presentation(
+    proton_engine_window_t *window, proton_engine_runtime_t *runtime,
+    const proton_engine_window_config_t *config, char *error,
+    size_t error_len) {
+  @autoreleasepool {
+    if (window == NULL || runtime == NULL || config == NULL) {
+      proton_engine_set_message(error, error_len,
+                                "window, runtime, and config are required");
+      return PROTON_ERR_INVALID_ARGUMENT;
+    }
+    if (window->browser_lifecycle != NULL || window->browser_session != NULL ||
+        window->bridge != NULL) {
+      proton_engine_set_message(error, error_len,
+                                "presentation is already attached");
+      return PROTON_ERR_ALREADY_INITIALIZED;
+    }
+    if (window->platform == NULL && config->platform_window != NULL) {
+      window->platform = config->platform_window;
+      window->platform->backend = window;
+    }
+    window->runtime = runtime;
+    window->public_window_id = config->public_window;
+    window->bridge = proton_engine_bridge_host_create(
+        runtime, config->public_window, config->bridge_config);
+    window->browser_session = proton_browser_session_create(
+        &config->browser_policy, config->web_request_config,
+        proton_engine_browser_signal, NULL);
+    window->browser_lifecycle = proton_browser_lifecycle_create(
+        runtime->browsers, PROTON_BROWSER_ROLE_MAIN, window, NULL);
+    if (window->bridge == NULL || window->browser_session == NULL ||
+        window->browser_lifecycle == NULL) {
+      proton_browser_lifecycle_creation_failed(window->browser_lifecycle);
+      proton_engine_bridge_host_destroy(window->bridge);
+      window->bridge = NULL;
+      proton_browser_session_destroy(window->browser_session);
+      window->browser_session = NULL;
+      window->browser_lifecycle = NULL;
+      proton_engine_set_message(error, error_len,
+                                "failed to allocate browser state");
+      return PROTON_ERR_ENGINE;
+    }
+    proton_browser_session_bind_window(window->browser_session,
+                                       config->public_window);
+    proton_browser_session_bind_lifecycle(window->browser_session,
+                                          window->browser_lifecycle);
+    proton_engine_client_t *client = proton_engine_client_create(
+        window->browser_lifecycle, config->web_request_config);
+    if (client == NULL) {
       proton_browser_lifecycle_creation_failed(window->browser_lifecycle);
       proton_browser_lifecycle_clear_owner(window->browser_lifecycle);
+      window->browser_lifecycle = NULL;
       proton_browser_session_destroy(window->browser_session);
+      window->browser_session = NULL;
       proton_engine_bridge_host_destroy(window->bridge);
-      free(window);
+      window->bridge = NULL;
+      proton_engine_set_message(error, error_len, "failed to allocate client");
+      return PROTON_ERR_ENGINE;
+    }
+    proton_browser_lifecycle_set_client(window->browser_lifecycle,
+                                        &client->client);
+    window->initial_url =
+        proton_engine_strdup(config->initial_url[0] != '\0'
+                                 ? config->initial_url
+                                 : "about:blank");
+    if (window->initial_url == NULL) {
+      proton_browser_lifecycle_creation_failed(window->browser_lifecycle);
+      proton_browser_lifecycle_clear_owner(window->browser_lifecycle);
+      window->browser_lifecycle = NULL;
+      proton_browser_session_destroy(window->browser_session);
+      window->browser_session = NULL;
+      proton_engine_bridge_host_destroy(window->bridge);
+      window->bridge = NULL;
       proton_engine_set_message(error, error_len,
                                 "failed to copy initial browser url");
       return PROTON_ERR_ENGINE;
     }
     window->browser_create_pending = 1;
-    proton_engine_window_list_add(window);
     proton_engine_signal_wait_source(PROTON_WAIT_PLATFORM);
-    *out_window = window;
+    return PROTON_OK;
+  }
+}
+
+static void proton_engine_window_defer_finalize(
+    proton_engine_window_t *window);
+
+int32_t proton_engine_window_detach_presentation(
+    proton_engine_window_t *window, char *error, size_t error_len) {
+  @autoreleasepool {
+    if (window == NULL) {
+      proton_engine_set_message(error, error_len, "window is required");
+      return PROTON_ERR_INVALID_ARGUMENT;
+    }
+    if (window->browser_lifecycle == NULL) {
+      return PROTON_OK;
+    }
+    window->detach_presentation_requested = 1;
+    window->browser_create_pending = 0;
+    window->initial_navigation_pending = 0;
+    proton_engine_window_close_views(window);
+    if (proton_engine_window_browser(window) != NULL) {
+      proton_engine_bridge_pending_remove_browser(
+          window->runtime,
+          proton_browser_lifecycle_browser_id(window->browser_lifecycle));
+      if (!proton_engine_window_request_browser_close(window, 1)) {
+        proton_engine_set_message(error, error_len,
+                                  "browser host is not available for detach");
+        return PROTON_ERR_ENGINE;
+      }
+    } else {
+      proton_browser_lifecycle_creation_failed(window->browser_lifecycle);
+    }
+    proton_engine_window_defer_finalize(window);
+    proton_engine_window_finalize_if_ready(window);
     return PROTON_OK;
   }
 }
@@ -1177,22 +1323,23 @@ static void proton_engine_window_free(proton_engine_window_t *window) {
   proton_engine_bridge_host_destroy(window->bridge);
   free(window->initial_url);
   proton_browser_session_destroy(window->browser_session);
+  proton_platform_window_backend_finalized(window->platform, window);
   free(window);
   proton_engine_window_unlock();
 }
 
 static void proton_engine_window_detach_native_window(
     proton_engine_window_t *window) {
-  if (window == NULL || window->window == nil) {
+  if (window == NULL || proton_engine_window_native_window(window) == nil) {
     if (window != NULL) {
-      window->content_view = nil;
+      proton_engine_window_set_content_view(window, nil);
       window->browser_view = nil;
     }
     return;
   }
-  NSWindow *native_window = window->window;
-  window->window = nil;
-  window->content_view = nil;
+  NSWindow *native_window = proton_engine_window_native_window(window);
+  proton_engine_window_set_native_window(window, nil);
+  proton_engine_window_set_content_view(window, nil);
   window->browser_view = nil;
   [native_window setDelegate:nil];
   [native_window close];
@@ -1229,6 +1376,22 @@ void proton_engine_window_finalize_if_ready(
       return;
     }
   }
+  if (window->detach_presentation_requested &&
+      !window->destroy_requested) {
+    proton_engine_window_free_views(window);
+    proton_browser_lifecycle_clear_owner(window->browser_lifecycle);
+    window->browser_lifecycle = NULL;
+    proton_engine_bridge_host_destroy(window->bridge);
+    window->bridge = NULL;
+    proton_browser_session_destroy(window->browser_session);
+    window->browser_session = NULL;
+    free(window->initial_url);
+    window->initial_url = NULL;
+    window->browser_view = nil;
+    window->finalize_after_browser_close = 0;
+    window->detach_presentation_requested = 0;
+    return;
+  }
   proton_engine_window_list_remove(window);
   proton_browser_lifecycle_clear_owner(window->browser_lifecycle);
   proton_engine_window_detach_native_window(window);
@@ -1243,6 +1406,7 @@ int32_t proton_engine_window_destroy(proton_engine_window_t *window,
       proton_engine_set_message(error, error_len, "window is required");
       return PROTON_ERR_INVALID_ARGUMENT;
     }
+    window->destroy_requested = 1;
     proton_engine_window_close_views(window);
     if (proton_engine_window_browser(window) != NULL) {
       if (!proton_engine_window_request_browser_close(window, 1)) {
@@ -1262,11 +1426,93 @@ int32_t proton_engine_window_destroy(proton_engine_window_t *window,
   }
 }
 
+int32_t proton_platform_mac_window_show(
+    void *native_window, int32_t inactive, char *error, size_t error_len) {
+  @autoreleasepool {
+    NSWindow *window = (__bridge NSWindow *)native_window;
+    if (window == nil) {
+      proton_engine_set_message(error, error_len, "window is required");
+      return PROTON_ERR_INVALID_ARGUMENT;
+    }
+    if (inactive) {
+      [window orderFront:nil];
+    } else {
+      [window makeKeyAndOrderFront:nil];
+      [NSApp activateIgnoringOtherApps:YES];
+    }
+    return PROTON_OK;
+  }
+}
+
+int32_t proton_platform_mac_window_hide(
+    void *native_window, char *error, size_t error_len) {
+  @autoreleasepool {
+    NSWindow *window = (__bridge NSWindow *)native_window;
+    if (window == nil) {
+      proton_engine_set_message(error, error_len, "window is required");
+      return PROTON_ERR_INVALID_ARGUMENT;
+    }
+    [window orderOut:nil];
+    return PROTON_OK;
+  }
+}
+
+int32_t proton_platform_mac_window_focus(
+    void *native_window, char *error, size_t error_len) {
+  @autoreleasepool {
+    NSWindow *window = (__bridge NSWindow *)native_window;
+    if (window == nil) {
+      proton_engine_set_message(error, error_len, "window is required");
+      return PROTON_ERR_INVALID_ARGUMENT;
+    }
+    [NSApp activateIgnoringOtherApps:YES];
+    [window makeKeyAndOrderFront:nil];
+    return PROTON_OK;
+  }
+}
+
+int32_t proton_platform_mac_window_set_title(
+    void *native_window, const char *title, char *error, size_t error_len) {
+  @autoreleasepool {
+    NSWindow *window = (__bridge NSWindow *)native_window;
+    if (window == nil) {
+      proton_engine_set_message(error, error_len, "window is required");
+      return PROTON_ERR_INVALID_ARGUMENT;
+    }
+    NSString *value =
+        [NSString stringWithUTF8String:title != NULL ? title : ""];
+    [window setTitle:value != nil ? value : @""];
+    return PROTON_OK;
+  }
+}
+
+int32_t proton_platform_mac_window_set_size(
+    void *native_window, int32_t width, int32_t height, char *error,
+    size_t error_len) {
+  @autoreleasepool {
+    NSWindow *window = (__bridge NSWindow *)native_window;
+    if (window == nil) {
+      proton_engine_set_message(error, error_len, "window is required");
+      return PROTON_ERR_INVALID_ARGUMENT;
+    }
+    if (width <= 0 || height <= 0) {
+      proton_engine_set_message(error, error_len,
+                                "width and height must be positive");
+      return PROTON_ERR_INVALID_ARGUMENT;
+    }
+    NSRect frame = [window frame];
+    frame.size.width = width;
+    frame.size.height = height;
+    [window setFrame:frame display:YES animate:NO];
+    return PROTON_OK;
+  }
+}
+
 int32_t proton_engine_window_show(proton_engine_window_t *window,
                                   char *error,
                                   size_t error_len) {
   @autoreleasepool {
-    if (window == NULL || (!window->headless && window->window == nil)) {
+    if (window == NULL || (!window->headless && proton_engine_window_native_window(window) == nil)) {
       proton_engine_set_message(error, error_len, "window is required");
       return PROTON_ERR_INVALID_ARGUMENT;
     }
@@ -1280,7 +1526,7 @@ int32_t proton_engine_window_show(proton_engine_window_t *window,
         }
       }
     } else {
-      [window->window makeKeyAndOrderFront:nil];
+      [proton_engine_window_native_window(window) makeKeyAndOrderFront:nil];
       [NSApp activateIgnoringOtherApps:YES];
     }
     return PROTON_OK;
@@ -1290,12 +1536,12 @@ int32_t proton_engine_window_show(proton_engine_window_t *window,
 int32_t proton_engine_window_show_inactive(proton_engine_window_t *window,
                                            char *error, size_t error_len) {
   @autoreleasepool {
-    if (window == NULL || (!window->headless && window->window == nil)) {
+    if (window == NULL || (!window->headless && proton_engine_window_native_window(window) == nil)) {
       proton_engine_set_message(error, error_len, "window is required");
       return PROTON_ERR_INVALID_ARGUMENT;
     }
     if (window->headless) return proton_engine_window_show(window, error, error_len);
-    [window->window orderFront:nil];
+    [proton_engine_window_native_window(window) orderFront:nil];
     return PROTON_OK;
   }
 }
@@ -1304,7 +1550,7 @@ int32_t proton_engine_window_hide(proton_engine_window_t *window,
                                   char *error,
                                   size_t error_len) {
   @autoreleasepool {
-    if (window == NULL || (!window->headless && window->window == nil)) {
+    if (window == NULL || (!window->headless && proton_engine_window_native_window(window) == nil)) {
       proton_engine_set_message(error, error_len, "window is required");
       return PROTON_ERR_INVALID_ARGUMENT;
     }
@@ -1318,7 +1564,7 @@ int32_t proton_engine_window_hide(proton_engine_window_t *window,
         }
       }
     } else {
-      [window->window orderOut:nil];
+      [proton_engine_window_native_window(window) orderOut:nil];
     }
     return PROTON_OK;
   }
@@ -1328,7 +1574,7 @@ int32_t proton_engine_window_close(proton_engine_window_t *window,
                                    char *error,
                                    size_t error_len) {
   @autoreleasepool {
-    if (window == NULL || (!window->headless && window->window == nil)) {
+    if (window == NULL || (!window->headless && proton_engine_window_native_window(window) == nil)) {
       proton_engine_set_message(error, error_len, "window is required");
       return PROTON_ERR_INVALID_ARGUMENT;
     }
@@ -1349,7 +1595,7 @@ int32_t proton_engine_window_close(proton_engine_window_t *window,
     if (!window->headless) {
       window->programmatic_close_pending = 1;
       proton_engine_window_apply_closable_style(window);
-      [window->window performClose:nil];
+      [proton_engine_window_native_window(window) performClose:nil];
       return PROTON_OK;
     }
     if (proton_engine_window_browser(window) != NULL) {
@@ -1423,7 +1669,7 @@ int32_t proton_engine_window_focus(proton_engine_window_t *window,
                                    char *error,
                                    size_t error_len) {
   @autoreleasepool {
-    if (window == NULL || (!window->headless && window->window == nil)) {
+    if (window == NULL || (!window->headless && proton_engine_window_native_window(window) == nil)) {
       proton_engine_set_message(error, error_len, "window is required");
       return PROTON_ERR_INVALID_ARGUMENT;
     }
@@ -1438,18 +1684,38 @@ int32_t proton_engine_window_focus(proton_engine_window_t *window,
       }
     } else {
       [NSApp activateIgnoringOtherApps:YES];
-      [window->window makeKeyAndOrderFront:nil];
+      [proton_engine_window_native_window(window) makeKeyAndOrderFront:nil];
     }
     return PROTON_OK;
   }
 }
+
+int32_t proton_engine_window_focus_presentation(
+    proton_engine_window_t *window, char *error, size_t error_len) {
+  if (window == NULL) {
+    proton_engine_set_message(error, error_len, "window is required");
+    return PROTON_ERR_INVALID_ARGUMENT;
+  }
+  if (!window->headless || proton_engine_window_browser(window) == NULL) {
+    return PROTON_OK;
+  }
+  cef_browser_host_t *host =
+      proton_engine_window_browser(window)->get_host(
+          proton_engine_window_browser(window));
+  if (host != NULL) {
+    host->set_focus(host, 1);
+    host->base.release((cef_base_ref_counted_t *)host);
+  }
+  return PROTON_OK;
+}
+
 
 int32_t proton_engine_window_set_title(proton_engine_window_t *window,
                                        const char *title,
                                        char *error,
                                        size_t error_len) {
   @autoreleasepool {
-    if (window == NULL || (!window->headless && window->window == nil)) {
+    if (window == NULL || (!window->headless && proton_engine_window_native_window(window) == nil)) {
       proton_engine_set_message(error, error_len, "window is required");
       return PROTON_ERR_INVALID_ARGUMENT;
     }
@@ -1459,7 +1725,7 @@ int32_t proton_engine_window_set_title(proton_engine_window_t *window,
       return PROTON_ERR_UNSUPPORTED;
     }
     NSString *value = [NSString stringWithUTF8String:title != NULL ? title : ""];
-    [window->window setTitle:value != nil ? value : @""];
+    [proton_engine_window_native_window(window) setTitle:value != nil ? value : @""];
     return PROTON_OK;
   }
 }
@@ -1468,7 +1734,7 @@ int32_t proton_engine_window_set_icon(proton_engine_window_t *window,
                                       const char *path, char *error,
                                       size_t error_len) {
   @autoreleasepool {
-    if (window == NULL || (!window->headless && window->window == nil)) {
+    if (window == NULL || (!window->headless && proton_engine_window_native_window(window) == nil)) {
       proton_engine_set_message(error, error_len, "window is not initialized");
       return PROTON_ERR_INVALID_HANDLE;
     }
@@ -1487,7 +1753,7 @@ int32_t proton_engine_window_set_icon(proton_engine_window_t *window,
       proton_engine_set_message(error, error_len, "failed to load window icon");
       return PROTON_ERR_PLATFORM;
     }
-    [window->window setMiniwindowImage:image];
+    [proton_engine_window_native_window(window) setMiniwindowImage:image];
     [image release];
     return PROTON_OK;
   }
@@ -1498,7 +1764,7 @@ int32_t proton_engine_window_set_parent(proton_engine_window_t *window,
                                         int32_t modal, char *error,
                                         size_t error_len) {
   @autoreleasepool {
-    if (window == NULL || (!window->headless && window->window == nil)) {
+    if (window == NULL || (!window->headless && proton_engine_window_native_window(window) == nil)) {
       proton_engine_set_message(error, error_len, "window is not initialized");
       return PROTON_ERR_INVALID_HANDLE;
     }
@@ -1511,20 +1777,20 @@ int32_t proton_engine_window_set_parent(proton_engine_window_t *window,
                                 "window parenting is not supported in headless mode");
       return PROTON_ERR_UNSUPPORTED;
     }
-    NSWindow *native = window->window;
+    NSWindow *native = proton_engine_window_native_window(window);
     NSWindow *sheet_parent = native.sheetParent;
     if (sheet_parent != nil) [sheet_parent endSheet:native];
     NSWindow *child_parent = native.parentWindow;
     if (child_parent != nil) [child_parent removeChildWindow:native];
     if (parent == NULL) return PROTON_OK;
-    if (parent->window == nil) {
+    if (proton_engine_window_native_window(parent) == nil) {
       proton_engine_set_message(error, error_len, "parent window is not initialized");
       return PROTON_ERR_INVALID_HANDLE;
     }
     if (modal) {
-      [parent->window beginSheet:native completionHandler:nil];
+      [proton_engine_window_native_window(parent) beginSheet:native completionHandler:nil];
     } else {
-      [parent->window addChildWindow:native ordered:NSWindowAbove];
+      [proton_engine_window_native_window(parent) addChildWindow:native ordered:NSWindowAbove];
     }
     return PROTON_OK;
   }
@@ -1536,7 +1802,7 @@ int32_t proton_engine_window_set_size(proton_engine_window_t *window,
                                       char *error,
                                       size_t error_len) {
   @autoreleasepool {
-    if (window == NULL || (!window->headless && window->window == nil)) {
+    if (window == NULL || (!window->headless && proton_engine_window_native_window(window) == nil)) {
       proton_engine_set_message(error, error_len, "window is required");
       return PROTON_ERR_INVALID_ARGUMENT;
     }
@@ -1556,10 +1822,10 @@ int32_t proton_engine_window_set_size(proton_engine_window_t *window,
         }
       }
     } else {
-      NSRect frame = [window->window frame];
+      NSRect frame = [proton_engine_window_native_window(window) frame];
       frame.size.width = width;
       frame.size.height = height;
-      [window->window setFrame:frame display:YES animate:NO];
+      [proton_engine_window_native_window(window) setFrame:frame display:YES animate:NO];
     }
     return PROTON_OK;
   }
@@ -1569,7 +1835,7 @@ int32_t proton_engine_window_set_content_size(
     proton_engine_window_t *window, int32_t width, int32_t height,
     char *error, size_t error_len) {
   @autoreleasepool {
-    if (window == NULL || (!window->headless && window->window == nil)) {
+    if (window == NULL || (!window->headless && proton_engine_window_native_window(window) == nil)) {
       proton_engine_set_message(error, error_len, "window is not initialized");
       return PROTON_ERR_INVALID_HANDLE;
     }
@@ -1590,7 +1856,7 @@ int32_t proton_engine_window_set_content_size(
       }
       return PROTON_OK;
     }
-    [window->window setContentSize:NSMakeSize(width, height)];
+    [proton_engine_window_native_window(window) setContentSize:NSMakeSize(width, height)];
     return PROTON_OK;
   }
 }
@@ -1608,11 +1874,11 @@ int32_t proton_engine_window_get_content_size(
       *out_height = window->height;
       return PROTON_OK;
     }
-    if (window->window == nil) {
+    if (proton_engine_window_native_window(window) == nil) {
       proton_engine_set_message(error, error_len, "window is not initialized");
       return PROTON_ERR_INVALID_HANDLE;
     }
-    NSRect bounds = window->window.contentView.bounds;
+    NSRect bounds = proton_engine_window_native_window(window).contentView.bounds;
     *out_width = (int32_t)llround(bounds.size.width);
     *out_height = (int32_t)llround(bounds.size.height);
     return PROTON_OK;
@@ -1623,7 +1889,7 @@ int32_t proton_engine_window_set_minimum_size(
     proton_engine_window_t *window, int32_t width, int32_t height,
     char *error, size_t error_len) {
   @autoreleasepool {
-    if (window == NULL || (!window->headless && window->window == nil)) {
+    if (window == NULL || (!window->headless && proton_engine_window_native_window(window) == nil)) {
       proton_engine_set_message(error, error_len, "window is not initialized");
       return PROTON_ERR_INVALID_HANDLE;
     }
@@ -1650,7 +1916,7 @@ int32_t proton_engine_window_set_maximum_size(
     proton_engine_window_t *window, int32_t width, int32_t height,
     char *error, size_t error_len) {
   @autoreleasepool {
-    if (window == NULL || (!window->headless && window->window == nil)) {
+    if (window == NULL || (!window->headless && proton_engine_window_native_window(window) == nil)) {
       proton_engine_set_message(error, error_len, "window is not initialized");
       return PROTON_ERR_INVALID_HANDLE;
     }
@@ -1677,7 +1943,7 @@ int32_t proton_engine_window_set_aspect_ratio(
     proton_engine_window_t *window, double aspect_ratio, char *error,
     size_t error_len) {
   @autoreleasepool {
-    if (window == NULL || (!window->headless && window->window == nil)) {
+    if (window == NULL || (!window->headless && proton_engine_window_native_window(window) == nil)) {
       proton_engine_set_message(error, error_len, "window is not initialized");
       return PROTON_ERR_INVALID_HANDLE;
     }
@@ -1694,9 +1960,9 @@ int32_t proton_engine_window_set_aspect_ratio(
     }
     window->aspect_ratio = aspect_ratio;
     if (aspect_ratio > 0.0) {
-      [window->window setContentAspectRatio:NSMakeSize(aspect_ratio, 1.0)];
+      [proton_engine_window_native_window(window) setContentAspectRatio:NSMakeSize(aspect_ratio, 1.0)];
     } else {
-      [window->window setResizeIncrements:NSMakeSize(1.0, 1.0)];
+      [proton_engine_window_native_window(window) setResizeIncrements:NSMakeSize(1.0, 1.0)];
     }
     return PROTON_OK;
   }
@@ -1706,7 +1972,7 @@ int32_t proton_engine_window_set_movable(proton_engine_window_t *window,
                                          int32_t movable, char *error,
                                          size_t error_len) {
   @autoreleasepool {
-    if (window == NULL || (!window->headless && window->window == nil)) {
+    if (window == NULL || (!window->headless && proton_engine_window_native_window(window) == nil)) {
       proton_engine_set_message(error, error_len, "window is not initialized");
       return PROTON_ERR_INVALID_HANDLE;
     }
@@ -1721,7 +1987,7 @@ int32_t proton_engine_window_set_movable(proton_engine_window_t *window,
           "window movement is not supported in headless mode");
       return PROTON_ERR_UNSUPPORTED;
     }
-    [window->window setMovable:movable != 0];
+    [proton_engine_window_native_window(window) setMovable:movable != 0];
     return PROTON_OK;
   }
 }
@@ -1730,7 +1996,7 @@ int32_t proton_engine_window_set_opacity(proton_engine_window_t *window,
                                          double opacity, char *error,
                                          size_t error_len) {
   @autoreleasepool {
-    if (window == NULL || (!window->headless && window->window == nil)) {
+    if (window == NULL || (!window->headless && proton_engine_window_native_window(window) == nil)) {
       proton_engine_set_message(error, error_len, "window is not initialized");
       return PROTON_ERR_INVALID_HANDLE;
     }
@@ -1745,7 +2011,7 @@ int32_t proton_engine_window_set_opacity(proton_engine_window_t *window,
       return PROTON_ERR_UNSUPPORTED;
     }
     const double bounded_opacity = opacity < 0.0 ? 0.0 : (opacity > 1.0 ? 1.0 : opacity);
-    [window->window setAlphaValue:bounded_opacity];
+    [proton_engine_window_native_window(window) setAlphaValue:bounded_opacity];
     return PROTON_OK;
   }
 }
@@ -1753,7 +2019,7 @@ int32_t proton_engine_window_set_opacity(proton_engine_window_t *window,
 int32_t proton_engine_window_set_skip_taskbar(proton_engine_window_t *window,
                                               int32_t skip, char *error,
                                               size_t error_len) {
-  if (window == NULL || (!window->headless && window->window == nil)) {
+  if (window == NULL || (!window->headless && proton_engine_window_native_window(window) == nil)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -1775,7 +2041,7 @@ int32_t proton_engine_window_set_content_protection(
     proton_engine_window_t *window, int32_t enabled, char *error,
     size_t error_len) {
   @autoreleasepool {
-    if (window == NULL || (!window->headless && window->window == nil)) {
+    if (window == NULL || (!window->headless && proton_engine_window_native_window(window) == nil)) {
       proton_engine_set_message(error, error_len, "window is not initialized");
       return PROTON_ERR_INVALID_HANDLE;
     }
@@ -1788,7 +2054,7 @@ int32_t proton_engine_window_set_content_protection(
                                 "content protection is not supported in headless mode");
       return PROTON_ERR_UNSUPPORTED;
     }
-    window->window.sharingType = enabled ? NSWindowSharingNone : NSWindowSharingReadOnly;
+    proton_engine_window_native_window(window).sharingType = enabled ? NSWindowSharingNone : NSWindowSharingReadOnly;
     return PROTON_OK;
   }
 }
@@ -1797,7 +2063,7 @@ int32_t proton_engine_window_set_minimizable(
     proton_engine_window_t *window, int32_t minimizable, char *error,
     size_t error_len) {
   @autoreleasepool {
-    if (window == NULL || (!window->headless && window->window == nil)) {
+    if (window == NULL || (!window->headless && proton_engine_window_native_window(window) == nil)) {
       proton_engine_set_message(error, error_len, "window is not initialized");
       return PROTON_ERR_INVALID_HANDLE;
     }
@@ -1810,13 +2076,13 @@ int32_t proton_engine_window_set_minimizable(
                                 "window minimizability is not supported in headless mode");
       return PROTON_ERR_UNSUPPORTED;
     }
-    NSWindowStyleMask style = window->window.styleMask;
+    NSWindowStyleMask style = proton_engine_window_native_window(window).styleMask;
     if (minimizable) {
       style |= NSWindowStyleMaskMiniaturizable;
     } else {
       style &= ~NSWindowStyleMaskMiniaturizable;
     }
-    window->window.styleMask = style;
+    proton_engine_window_native_window(window).styleMask = style;
     return PROTON_OK;
   }
 }
@@ -1825,7 +2091,7 @@ int32_t proton_engine_window_set_maximizable(
     proton_engine_window_t *window, int32_t maximizable, char *error,
     size_t error_len) {
   @autoreleasepool {
-    if (window == NULL || (!window->headless && window->window == nil)) {
+    if (window == NULL || (!window->headless && proton_engine_window_native_window(window) == nil)) {
       proton_engine_set_message(error, error_len, "window is not initialized");
       return PROTON_ERR_INVALID_HANDLE;
     }
@@ -1848,7 +2114,7 @@ int32_t proton_engine_window_set_closable(
     proton_engine_window_t *window, int32_t closable, char *error,
     size_t error_len) {
   @autoreleasepool {
-    if (window == NULL || (!window->headless && window->window == nil)) {
+    if (window == NULL || (!window->headless && proton_engine_window_native_window(window) == nil)) {
       proton_engine_set_message(error, error_len, "window is not initialized");
       return PROTON_ERR_INVALID_HANDLE;
     }
@@ -1877,7 +2143,7 @@ int32_t proton_engine_window_set_button_position(
       window->button_position_custom = custom;
       window->button_position_x = x;
       window->button_position_y = y;
-      [window->window layoutIfNeeded];
+      [proton_engine_window_native_window(window) layoutIfNeeded];
       proton_engine_signal_wait_source(PROTON_WAIT_PLATFORM);
     }
     return PROTON_OK;
@@ -1898,7 +2164,7 @@ int32_t proton_engine_window_set_button_visibility(
     proton_engine_window_t *window, int32_t visible, char *error,
     size_t error_len) {
   @autoreleasepool {
-    if (window == NULL || (!window->headless && window->window == nil)) {
+    if (window == NULL || (!window->headless && proton_engine_window_native_window(window) == nil)) {
       proton_engine_set_message(error, error_len, "window is not initialized");
       return PROTON_ERR_INVALID_HANDLE;
     }
@@ -1914,11 +2180,11 @@ int32_t proton_engine_window_set_button_visibility(
     const NSWindowButton buttons[] = {
         NSWindowCloseButton, NSWindowMiniaturizeButton, NSWindowZoomButton};
     for (size_t index = 0; index < sizeof(buttons) / sizeof(buttons[0]); index++) {
-      NSButton *button = [window->window standardWindowButton:buttons[index]];
+      NSButton *button = [proton_engine_window_native_window(window) standardWindowButton:buttons[index]];
       if (button != nil) button.hidden = visible == 0;
     }
     window->window_button_visible = visible;
-    [window->window layoutIfNeeded];
+    [proton_engine_window_native_window(window) layoutIfNeeded];
     return PROTON_OK;
   }
 }
@@ -1927,7 +2193,7 @@ int32_t proton_engine_window_set_focusable(
     proton_engine_window_t *window, int32_t focusable, char *error,
     size_t error_len) {
   @autoreleasepool {
-    if (window == NULL || (!window->headless && window->window == nil)) {
+    if (window == NULL || (!window->headless && proton_engine_window_native_window(window) == nil)) {
       proton_engine_set_message(error, error_len, "window is not initialized");
       return PROTON_ERR_INVALID_HANDLE;
     }
@@ -1940,7 +2206,7 @@ int32_t proton_engine_window_set_focusable(
                                 "window focusability is not supported in headless mode");
       return PROTON_ERR_UNSUPPORTED;
     }
-    [(ProtonWindow *)window->window setProtonFocusable:focusable != 0];
+    [(ProtonWindow *)proton_engine_window_native_window(window) setProtonFocusable:focusable != 0];
     return PROTON_OK;
   }
 }
@@ -2000,7 +2266,7 @@ int32_t proton_engine_window_set_overlay_icon(
   (void)description;
   (void)error;
   (void)error_len;
-  if (window == NULL || (!window->headless && window->window == nil)) {
+  if (window == NULL || (!window->headless && proton_engine_window_native_window(window) == nil)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -2013,7 +2279,7 @@ int32_t proton_engine_window_set_thumbnail_tooltip(
   (void)tooltip;
   (void)error;
   (void)error_len;
-  if (window == NULL || (!window->headless && window->window == nil)) {
+  if (window == NULL || (!window->headless && proton_engine_window_native_window(window) == nil)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -2030,7 +2296,7 @@ int32_t proton_engine_window_set_thumbar_buttons(
     return PROTON_ERR_INVALID_ARGUMENT;
   }
   *out_applied = 0;
-  if (window == NULL || (!window->headless && window->window == nil)) {
+  if (window == NULL || (!window->headless && proton_engine_window_native_window(window) == nil)) {
     proton_engine_set_message(error, error_len, "window is not initialized");
     return PROTON_ERR_INVALID_HANDLE;
   }
@@ -2048,7 +2314,7 @@ int32_t proton_engine_window_flash_frame(
     proton_engine_window_t *window, int32_t flash, char *error,
     size_t error_len) {
   @autoreleasepool {
-    if (window == NULL || (!window->headless && window->window == nil)) {
+    if (window == NULL || (!window->headless && proton_engine_window_native_window(window) == nil)) {
       proton_engine_set_message(error, error_len, "window is required");
       return PROTON_ERR_INVALID_ARGUMENT;
     }
@@ -2094,7 +2360,7 @@ int32_t proton_engine_window_apply(
     size_t error_len) {
   @autoreleasepool {
     if (window == NULL || action == NULL ||
-        (!window->headless && window->window == nil)) {
+        (!window->headless && proton_engine_window_native_window(window) == nil)) {
       proton_engine_set_message(error, error_len,
                                 "window and action are required");
       return PROTON_ERR_INVALID_ARGUMENT;
@@ -2126,39 +2392,39 @@ int32_t proton_engine_window_apply(
     }
     switch (action->kind) {
     case PROTON_ENGINE_WINDOW_MINIMIZE:
-      [window->window miniaturize:nil];
+      [proton_engine_window_native_window(window) miniaturize:nil];
       break;
     case PROTON_ENGINE_WINDOW_MAXIMIZE:
-      if ([window->window isMiniaturized]) {
-        [window->window deminiaturize:nil];
+      if ([proton_engine_window_native_window(window) isMiniaturized]) {
+        [proton_engine_window_native_window(window) deminiaturize:nil];
       }
-      if (![window->window isZoomed]) {
-        [window->window zoom:nil];
+      if (![proton_engine_window_native_window(window) isZoomed]) {
+        [proton_engine_window_native_window(window) zoom:nil];
       }
       break;
     case PROTON_ENGINE_WINDOW_RESTORE:
-      if ((window->window.styleMask & NSWindowStyleMaskFullScreen) != 0) {
-        [window->window toggleFullScreen:nil];
+      if ((proton_engine_window_native_window(window).styleMask & NSWindowStyleMaskFullScreen) != 0) {
+        [proton_engine_window_native_window(window) toggleFullScreen:nil];
       }
-      if ([window->window isMiniaturized]) {
-        [window->window deminiaturize:nil];
+      if ([proton_engine_window_native_window(window) isMiniaturized]) {
+        [proton_engine_window_native_window(window) deminiaturize:nil];
       }
-      if ([window->window isZoomed]) {
-        [window->window zoom:nil];
+      if ([proton_engine_window_native_window(window) isZoomed]) {
+        [proton_engine_window_native_window(window) zoom:nil];
       }
       break;
     case PROTON_ENGINE_WINDOW_SET_FULLSCREEN: {
       if (!window->fullscreenable && action->value != 0) break;
       const BOOL fullscreen =
-          (window->window.styleMask & NSWindowStyleMaskFullScreen) != 0;
+          (proton_engine_window_native_window(window).styleMask & NSWindowStyleMaskFullScreen) != 0;
       if (fullscreen != (action->value != 0)) {
-        [window->window toggleFullScreen:nil];
+        [proton_engine_window_native_window(window) toggleFullScreen:nil];
       }
       break;
     }
     case PROTON_ENGINE_WINDOW_SET_KIOSK: {
       const BOOL fullscreen =
-          (window->window.styleMask & NSWindowStyleMaskFullScreen) != 0;
+          (proton_engine_window_native_window(window).styleMask & NSWindowStyleMaskFullScreen) != 0;
       if (action->value != 0) {
         [NSApp setPresentationOptions:(NSApplicationPresentationAutoHideDock |
                                        NSApplicationPresentationAutoHideMenuBar |
@@ -2167,30 +2433,30 @@ int32_t proton_engine_window_apply(
         [NSApp setPresentationOptions:NSApplicationPresentationDefault];
       }
       if (fullscreen != (action->value != 0)) {
-        [window->window toggleFullScreen:nil];
+        [proton_engine_window_native_window(window) toggleFullScreen:nil];
       }
       break;
     }
     case PROTON_ENGINE_WINDOW_SET_POSITION: {
-      NSRect frame = window->window.frame;
+      NSRect frame = proton_engine_window_native_window(window).frame;
       const CGFloat cocoa_y =
           proton_engine_primary_screen_top() - action->y - frame.size.height;
-      [window->window
+      [proton_engine_window_native_window(window)
           setFrameOrigin:NSMakePoint((CGFloat)action->x, cocoa_y)];
       break;
     }
     case PROTON_ENGINE_WINDOW_SET_ALWAYS_ON_TOP:
-      window->window.level =
+      proton_engine_window_native_window(window).level =
           action->value != 0 ? NSFloatingWindowLevel : NSNormalWindowLevel;
       break;
     case PROTON_ENGINE_WINDOW_SET_RESIZABLE: {
-      NSWindowStyleMask style = window->window.styleMask;
+      NSWindowStyleMask style = proton_engine_window_native_window(window).styleMask;
       if (action->value != 0) {
         style |= NSWindowStyleMaskResizable;
       } else {
         style &= ~NSWindowStyleMaskResizable;
       }
-      window->window.styleMask = style;
+      proton_engine_window_native_window(window).styleMask = style;
       proton_engine_window_update_zoom_button(window);
       break;
     }
@@ -2208,7 +2474,7 @@ int32_t proton_engine_window_set_fullscreenable(
     proton_engine_window_t *window, int32_t fullscreenable, char *error,
     size_t error_len) {
   @autoreleasepool {
-    if (window == NULL || (!window->headless && window->window == nil)) {
+    if (window == NULL || (!window->headless && proton_engine_window_native_window(window) == nil)) {
       proton_engine_set_message(error, error_len, "window is not initialized");
       return PROTON_ERR_INVALID_HANDLE;
     }
@@ -2223,7 +2489,7 @@ int32_t proton_engine_window_set_fullscreenable(
       return PROTON_ERR_UNSUPPORTED;
     }
     window->fullscreenable = fullscreenable;
-    NSWindowCollectionBehavior behavior = window->window.collectionBehavior;
+    NSWindowCollectionBehavior behavior = proton_engine_window_native_window(window).collectionBehavior;
     if (fullscreenable) {
       behavior |= NSWindowCollectionBehaviorFullScreenPrimary;
       behavior &= ~NSWindowCollectionBehaviorFullScreenAuxiliary;
@@ -2231,7 +2497,7 @@ int32_t proton_engine_window_set_fullscreenable(
       behavior &= ~NSWindowCollectionBehaviorFullScreenPrimary;
       behavior |= NSWindowCollectionBehaviorFullScreenAuxiliary;
     }
-    window->window.collectionBehavior = behavior;
+    proton_engine_window_native_window(window).collectionBehavior = behavior;
     proton_engine_window_update_zoom_button(window);
     return PROTON_OK;
   }
@@ -2241,7 +2507,7 @@ int32_t proton_engine_window_set_has_shadow(
     proton_engine_window_t *window, int32_t has_shadow, char *error,
     size_t error_len) {
   @autoreleasepool {
-    if (window == NULL || (!window->headless && window->window == nil)) {
+    if (window == NULL || (!window->headless && proton_engine_window_native_window(window) == nil)) {
       proton_engine_set_message(error, error_len, "window is not initialized");
       return PROTON_ERR_INVALID_HANDLE;
     }
@@ -2254,7 +2520,7 @@ int32_t proton_engine_window_set_has_shadow(
                                 "window shadow is not supported in headless mode");
       return PROTON_ERR_UNSUPPORTED;
     }
-    window->window.hasShadow = has_shadow != 0;
+    proton_engine_window_native_window(window).hasShadow = has_shadow != 0;
     return PROTON_OK;
   }
 }
@@ -2263,7 +2529,7 @@ int32_t proton_engine_window_set_ignore_mouse_events(
     proton_engine_window_t *window, int32_t ignore, int32_t forward,
     char *error, size_t error_len) {
   @autoreleasepool {
-    if (window == NULL || (!window->headless && window->window == nil)) {
+    if (window == NULL || (!window->headless && proton_engine_window_native_window(window) == nil)) {
       proton_engine_set_message(error, error_len, "window is not initialized");
       return PROTON_ERR_INVALID_HANDLE;
     }
@@ -2282,7 +2548,7 @@ int32_t proton_engine_window_set_ignore_mouse_events(
     }
     window->ignore_mouse_events = ignore;
     window->ignore_mouse_forward = ignore ? forward : 0;
-    [window->window
+    [proton_engine_window_native_window(window)
         setIgnoresMouseEvents:ignore != 0 || window->enabled == 0];
     return PROTON_OK;
   }
@@ -2292,7 +2558,7 @@ int32_t proton_engine_window_set_background_color(
     proton_engine_window_t *window, uint32_t color, char *error,
     size_t error_len) {
   @autoreleasepool {
-    if (window == NULL || (!window->headless && window->window == nil)) {
+    if (window == NULL || (!window->headless && proton_engine_window_native_window(window) == nil)) {
       proton_engine_set_message(error, error_len, "window is not initialized");
       return PROTON_ERR_INVALID_HANDLE;
     }
@@ -2305,8 +2571,8 @@ int32_t proton_engine_window_set_background_color(
     const CGFloat red = (CGFloat)((color >> 16) & 0xff) / 255.0;
     const CGFloat green = (CGFloat)((color >> 8) & 0xff) / 255.0;
     const CGFloat blue = (CGFloat)(color & 0xff) / 255.0;
-    window->content_view.wantsLayer = YES;
-    window->content_view.layer.backgroundColor =
+    proton_engine_window_content_view(window).wantsLayer = YES;
+    proton_engine_window_content_view(window).layer.backgroundColor =
         [NSColor colorWithRed:red green:green blue:blue alpha:alpha].CGColor;
     return PROTON_OK;
   }
@@ -2317,7 +2583,7 @@ int32_t proton_engine_window_set_theme(
     proton_window_theme_preference_t theme_preference, char *error,
     size_t error_len) {
   @autoreleasepool {
-    if (window == NULL || (!window->headless && window->window == nil)) {
+    if (window == NULL || (!window->headless && proton_engine_window_native_window(window) == nil)) {
       proton_engine_set_message(error, error_len, "window is not initialized");
       return PROTON_ERR_INVALID_HANDLE;
     }
@@ -2345,7 +2611,7 @@ int32_t proton_engine_window_set_visible_on_all_workspaces(
     proton_engine_window_t *window, int32_t visible, char *error,
     size_t error_len) {
   @autoreleasepool {
-    if (window == NULL || (!window->headless && window->window == nil)) {
+    if (window == NULL || (!window->headless && proton_engine_window_native_window(window) == nil)) {
       proton_engine_set_message(error, error_len, "window is not initialized");
       return PROTON_ERR_INVALID_HANDLE;
     }
@@ -2358,13 +2624,13 @@ int32_t proton_engine_window_set_visible_on_all_workspaces(
                                 "workspace visibility is not supported in headless mode");
       return PROTON_ERR_UNSUPPORTED;
     }
-    NSWindowCollectionBehavior behavior = window->window.collectionBehavior;
+    NSWindowCollectionBehavior behavior = proton_engine_window_native_window(window).collectionBehavior;
     if (visible) {
       behavior |= NSWindowCollectionBehaviorCanJoinAllSpaces;
     } else {
       behavior &= ~NSWindowCollectionBehaviorCanJoinAllSpaces;
     }
-    window->window.collectionBehavior = behavior;
+    proton_engine_window_native_window(window).collectionBehavior = behavior;
     return PROTON_OK;
   }
 }
@@ -2373,7 +2639,7 @@ int32_t proton_engine_window_set_enabled(proton_engine_window_t *window,
                                          int32_t enabled, char *error,
                                          size_t error_len) {
   @autoreleasepool {
-    if (window == NULL || (!window->headless && window->window == nil)) {
+    if (window == NULL || (!window->headless && proton_engine_window_native_window(window) == nil)) {
       proton_engine_set_message(error, error_len, "window is not initialized");
       return PROTON_ERR_INVALID_HANDLE;
     }
@@ -2383,9 +2649,9 @@ int32_t proton_engine_window_set_enabled(proton_engine_window_t *window,
     }
     if (window->headless) return PROTON_OK;
     window->enabled = enabled;
-    [(ProtonWindow *)window->window setProtonEnabled:enabled != 0];
-    [window->window setIgnoresMouseEvents:enabled == 0 || window->ignore_mouse_events != 0];
-    if (!enabled && [window->window isKeyWindow]) [window->window resignKeyWindow];
+    [(ProtonWindow *)proton_engine_window_native_window(window) setProtonEnabled:enabled != 0];
+    [proton_engine_window_native_window(window) setIgnoresMouseEvents:enabled == 0 || window->ignore_mouse_events != 0];
+    if (!enabled && [proton_engine_window_native_window(window) isKeyWindow]) [proton_engine_window_native_window(window) resignKeyWindow];
     return PROTON_OK;
   }
 }
@@ -2413,12 +2679,12 @@ int32_t proton_engine_window_get_state(
       out_state->focused = window->headless_focused;
       return PROTON_OK;
     }
-    if (window->window == nil) {
+    if (proton_engine_window_native_window(window) == nil) {
       proton_engine_set_message(error, error_len, "window is not initialized");
       return PROTON_ERR_INVALID_HANDLE;
     }
-    const NSRect frame = window->window.frame;
-    NSScreen *screen = window->window.screen;
+    const NSRect frame = proton_engine_window_native_window(window).frame;
+    NSScreen *screen = proton_engine_window_native_window(window).screen;
     if (screen == nil) {
       screen = [NSScreen mainScreen];
     }
@@ -2437,15 +2703,15 @@ int32_t proton_engine_window_get_state(
     out_state->work_width = (int32_t)llround(work.size.width);
     out_state->work_height = (int32_t)llround(work.size.height);
     out_state->scale_factor_percent =
-        (int32_t)llround(window->window.backingScaleFactor * 100.0);
-    out_state->visible = window->window.isVisible ? 1 : 0;
-    out_state->focused = window->window.isKeyWindow ? 1 : 0;
-    out_state->minimized = window->window.isMiniaturized ? 1 : 0;
-    out_state->maximized = window->window.isZoomed ? 1 : 0;
+        (int32_t)llround(proton_engine_window_native_window(window).backingScaleFactor * 100.0);
+    out_state->visible = proton_engine_window_native_window(window).isVisible ? 1 : 0;
+    out_state->focused = proton_engine_window_native_window(window).isKeyWindow ? 1 : 0;
+    out_state->minimized = proton_engine_window_native_window(window).isMiniaturized ? 1 : 0;
+    out_state->maximized = proton_engine_window_native_window(window).isZoomed ? 1 : 0;
     out_state->fullscreen =
-        (window->window.styleMask & NSWindowStyleMaskFullScreen) != 0 ? 1 : 0;
+        (proton_engine_window_native_window(window).styleMask & NSWindowStyleMaskFullScreen) != 0 ? 1 : 0;
     out_state->always_on_top =
-        window->window.level > NSNormalWindowLevel ? 1 : 0;
+        proton_engine_window_native_window(window).level > NSNormalWindowLevel ? 1 : 0;
     return PROTON_OK;
   }
 }
@@ -2491,7 +2757,7 @@ int32_t proton_engine_window_respond_close_request(
       if (window->headless) {
         return proton_engine_window_close(window, error, error_len);
       }
-      [window->window performClose:nil];
+      [proton_engine_window_native_window(window) performClose:nil];
     } else if (!allow) {
       window->close_authorized = 0;
       window->programmatic_close_pending = 0;

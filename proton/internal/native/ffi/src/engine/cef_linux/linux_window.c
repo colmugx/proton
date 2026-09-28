@@ -648,20 +648,26 @@ int32_t proton_engine_window_create(
     return PROTON_ERR_INVALID_ARGUMENT;
   }
   *out_window = NULL;
-  if (runtime == NULL || input_config == NULL ||
-      !proton_engine_runtime_initialized()) {
+  if (input_config == NULL ||
+      (!input_config->defer_presentation &&
+       (runtime == NULL || !proton_engine_runtime_initialized()))) {
     proton_engine_set_message(error, error_len, "runtime is not initialized");
     return PROTON_ERR_NOT_INITIALIZED;
   }
   proton_engine_window_config_t config = *input_config;
   int32_t status = PROTON_OK;
-  if (runtime->headless && config.titlebar_overlay) {
+  const int headless = runtime != NULL ? runtime->headless : 0;
+  if (runtime == NULL && !headless &&
+      !proton_engine_ensure_gtk(error, error_len)) {
+    return PROTON_ERR_PLATFORM;
+  }
+  if (headless && config.titlebar_overlay) {
     proton_engine_set_message(
         error, error_len,
         "titlebar overlay is not supported in headless mode");
     return PROTON_ERR_UNSUPPORTED;
   }
-  if (!runtime->headless && config.theme_preference !=
+  if (!headless && config.theme_preference !=
                                 PROTON_WINDOW_THEME_PREFERENCE_SYSTEM) {
     proton_engine_set_message(
         error, error_len,
@@ -684,7 +690,7 @@ int32_t proton_engine_window_create(
   window->min_height = config.size_hint == 2 ? config.height : 0;
   window->max_width = config.size_hint == 3 ? config.width : 0;
   window->max_height = config.size_hint == 3 ? config.height : 0;
-  window->headless = runtime->headless;
+  window->headless = headless;
   window->size_hint = config.size_hint;
   window->titlebar_overlay = config.titlebar_overlay;
   window->theme_preference = config.theme_preference;
@@ -820,7 +826,7 @@ int32_t proton_engine_window_create(
                        TRUE, 0);
     }
     gtk_container_add(GTK_CONTAINER(window->window), window->root_box);
-    if (runtime->menu_definition != NULL) {
+    if (runtime != NULL && runtime->menu_definition != NULL) {
       status = proton_engine_window_install_menu(
           window, runtime->menu_definition, error, error_len);
       if (status != PROTON_OK) {
